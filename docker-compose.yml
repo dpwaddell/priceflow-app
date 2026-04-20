@@ -1,0 +1,28 @@
+services:
+  priceflow-db:
+    image: postgres:16-alpine
+    container_name: priceflow-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: priceflow_db
+      POSTGRES_USER: priceflow
+      POSTGRES_PASSWORD: priceflowpass
+    volumes:
+      - ./db:/var/lib/postgresql/data
+    ports:
+      - "5434:5432"
+
+  priceflow-app:
+    image: node:20-alpine
+    container_name: priceflow-app
+    restart: unless-stopped
+    working_dir: /app
+    env_file:
+      - .env
+    command: sh -c "npm install && npm run migrate && npm start"
+    volumes:
+      - ./app:/app
+    ports:
+      - "3100:3100"
+    depends_on:
+      - priceflow-db
