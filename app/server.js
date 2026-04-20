@@ -502,7 +502,7 @@ function renderDashboard({ shop, apiKey, dashboard, host }) {
     { label: "Create first pricing tier", done: dashboard.counts.tiers > 0, desc: "Set up Gold, Silver, VIP or another trade tier." },
     { label: "Assign first trade customer", done: dashboard.counts.assignments > 0, desc: "Link a customer to a pricing tier." },
     { label: "Add specific product prices", done: dashboard.counts.overrides > 0, desc: "Create customer-specific price overrides where needed." },
-    { label: "Import a CSV", done: dashboard.counts.imports > 0, desc: "Bulk upload pricing and assignments." }
+    { label: "Review configuration", done: dashboard.counts.tiers > 0 && dashboard.counts.assignments > 0, desc: "Confirm your tier and customer assignment setup is ready for testing." }
   ];
 
   const checklistHtml = checklist.map(item => `
@@ -537,12 +537,11 @@ function renderDashboard({ shop, apiKey, dashboard, host }) {
         <div class="card">
           <h2>Get started</h2>
           <div class="muted">
-            Your embedded admin shell is live. The next goal is simple: create a first tier, assign a first trade customer, then prove the value with CSV import.
+            PriceGuard is ready to configure. Create a pricing tier, assign a customer to that tier, and then test the setup with a customer account in your Shopify store.
           </div>
 
           <div class="actions">
             <a class="btn primary" href="${tierUrl}">Create first tier</a>
-            <button class="btn" onclick="alert('Next build: CSV import screen')">Import CSV</button>
             <a class="btn" href="${assignmentsUrl}">Assign customer</a>
           </div>
 
@@ -574,9 +573,9 @@ function renderDashboard({ shop, apiKey, dashboard, host }) {
         </div>
 
         <div class="card">
-          <h2>Free plan value</h2>
+          <h2>Getting started</h2>
           <div class="muted">
-            The free plan proves the magic with one trade customer. Paid plans will unlock more customer capacity, CSV workflows, collection pricing and customer-specific product prices.
+            Use PriceGuard to control which customers receive special pricing. Start by creating one tier, assign one customer, and validate the setup before expanding your configuration.
           </div>
         </div>
       </div>
@@ -810,7 +809,7 @@ function renderCustomerAssignmentsPage({ shop, host, apiKey, dashboard, tiers, a
         <div class="card">
           <h2>Assign customer to tier</h2>
           <div class="actions" style="margin-bottom:12px;">
-            <div class="empty" style="margin-bottom:12px;">Shopify customer search will be enabled once protected customer data access is approved. For now, enter customer email and Shopify customer ID manually.</div>
+            <div class="empty" style="margin-bottom:12px;">Shopify customer search is not enabled in this version. Enter the customer email and optional Shopify customer ID manually below.</div>
           </div>
           <form method="post" action="/customer-assignments?shop=${encodeURIComponent(shop)}${host ? `&host=${encodeURIComponent(host)}` : ""}">
             <div class="form-grid">
@@ -861,10 +860,10 @@ function renderCustomerAssignmentsPage({ shop, host, apiKey, dashboard, tiers, a
         <div class="card">
           <h2>How assignments work</h2>
           <div class="list">
-            <div class="list-row"><div>One row per customer</div><div class="muted">Manual MVP</div></div>
-            <div class="list-row"><div>Email is primary</div><div class="muted">Simple to test</div></div>
-            <div class="list-row"><div>Optional dates</div><div class="muted">Campaign ready</div></div>
-            <div class="list-row"><div>Free plan</div><div class="muted">1 trade customer</div></div>
+            <div class="list-row"><div>One row per customer</div><div class="muted">Clear and simple setup</div></div>
+            <div class="list-row"><div>Email is primary</div><div class="muted">Easy to validate during testing</div></div>
+            <div class="list-row"><div>Optional dates</div><div class="muted">Supports scheduled pricing windows</div></div>
+            <div class="list-row"><div>Manual entry</div><div class="muted">Customer search can be added later</div></div>
           </div>
         </div>
       </div>
