@@ -315,6 +315,36 @@ async function getCustomerAssignments(shopId) {
   return res.rows;
 }
 
+async function getPricingPreview(shopId, customerEmail) {
+  const res = await pool.query(
+    `SELECT
+       ca.id AS assignment_id,
+       ca.customer_email,
+       ca.shopify_customer_id,
+       ca.starts_at AS assignment_starts_at,
+       ca.ends_at AS assignment_ends_at,
+       ca.is_enabled AS assignment_enabled,
+       pt.id AS tier_id,
+       pt.name AS tier_name,
+       pt.customer_tag,
+       pt.discount_type,
+       pt.discount_value,
+       pt.starts_at AS tier_starts_at,
+       pt.ends_at AS tier_ends_at,
+       pt.is_enabled AS tier_enabled
+     FROM customer_assignments ca
+     JOIN pricing_tiers pt
+       ON pt.id = ca.tier_id
+     WHERE ca.shop_id = $1
+       AND LOWER(ca.customer_email) = LOWER($2)
+     ORDER BY ca.created_at DESC, ca.id DESC
+     LIMIT 1`,
+    [shopId, customerEmail]
+  );
+
+  return res.rows[0] || null;
+}
+
 async function writeAudit(shopId, action, entityType, entityId, metadata = {}) {
   await pool.query(
     `INSERT INTO audit_logs (shop_id, actor_type, actor_email, action, entity_type, entity_id, metadata_json)
@@ -473,11 +503,13 @@ function renderNav(shop, host, active) {
   const dashUrl = getEmbeddedAppUrl(shop, host, "/");
   const tiersUrl = getEmbeddedAppUrl(shop, host, "/pricing-tiers");
   const assignmentsUrl = getEmbeddedAppUrl(shop, host, "/customer-assignments");
+  const previewUrl = getEmbeddedAppUrl(shop, host, "/pricing-preview");
   return `
     <div class="nav">
-      <a class="${active === "dashboard" ? "active" : ""}" href="${dashUrl}">Dashboard</a>
-      <a class="${active === "tiers" ? "active" : ""}" href="${tiersUrl}">Pricing tiers</a>
-      <a class="${active === "assignments" ? "active" : ""}" href="${assignmentsUrl}">Customer assignments</a>
+      <button type="button" class="btn ${active === "dashboard" ? "primary" : ""}" onclick="window.location.href='${dashUrl}'">Dashboard</button>
+      <button type="button" class="btn ${active === "tiers" ? "primary" : ""}" onclick="window.location.href='${tiersUrl}'">Pricing tiers</button>
+      <button type="button" class="btn ${active === "assignments" ? "primary" : ""}" onclick="window.location.href='${assignmentsUrl}'">Customer assignments</button>
+      <button type="button" class="btn ${active === "preview" ? "primary" : ""}" onclick="window.location.href='${previewUrl}'">Pricing preview</button>
     </div>
   `;
 }
@@ -1222,6 +1254,145 @@ app.post("/customer-assignments/:id/delete", async (req, res) => {
     return res.redirect(getEmbeddedAppUrl(shop, host, "/customer-assignments"));
   } catch (e) {
     return res.status(500).send(`Delete customer assignment failed: ${escapeHtml(e.message)}`);
+  }
+});
+
+
+function renderPricingPreviewPage({ shop, host, apiKey, customerEmail = "", preview = null }) {
+  const assignmentState = preview
+    ? ruleStatus(preview.assignment_starts_at, preview.assignment_ends_at, preview.assignment_enabled)
+    : "";
+  const tierState = preview
+    ? ruleStatus(preview.tier_starts_at, preview.tier_ends_at, preview.tier_enabled)
+    : "";
+
+  let resolvedStatus = "";
+  if (preview) {
+    if (!preview.assignment_enabled || !preview.tier_enabled) {
+      resolvedStatus = "disabled";
+    } else if (assignmentState === "live" && tierState === "live") {
+      resolvedStatus = "active";
+    } else {
+      resolvedStatus = "scheduled_or_expired";
+    }
+  }
+
+  const statusBadgeClass =
+    resolvedStatus === "active" ? "live" :
+    resolvedStatus === "disabled" ? "draft" :
+    "scheduled";
+
+  const effectiveDiscount = preview
+    ? preview.discount_type === "percentage"
+      ? `${Number(preview.discount_value)}% off`
+      : `£${Number(preview.discount_value).toFixed(2)} off`
+    : "—";
+
+  const resultCard = !customerEmail
+    ? `<div class="empty">Enter a customer email to preview the currently assigned pricing rule.</div>`
+    : !preview
+      ? `<div class="empty">No pricing assignment found for that customer email.</div>`
+      : `
+        <div class="card">
+          <h2>Resolved pricing</h2>
+          <div class="list">
+            <div class="list-row"><div class="muted">Customer email</div><div>${escapeHtml(preview.customer_email || "—")}</div></div>
+            <div class="list-row"><div class="muted">Shopify customer ID</div><div>${escapeHtml(preview.shopify_customer_id || "—")}</div></div>
+            <div class="list-row"><div class="muted">Tier</div><div><strong>${escapeHtml(preview.tier_name || "—")}</strong></div></div>
+            <div class="list-row"><div class="muted">Discount</div><div>${escapeHtml(effectiveDiscount)}</div></div>
+            <div class="list-row"><div class="muted">Customer tag on tier</div><div>${escapeHtml(preview.customer_tag || "—")}</div></div>
+            <div class="list-row"><div class="muted">Assignment window</div><div>${escapeHtml(fmtDisplayDate(preview.assignment_starts_at))} → ${escapeHtml(fmtDisplayDate(preview.assignment_ends_at))}</div></div>
+            <div class="list-row"><div class="muted">Tier window</div><div>${escapeHtml(fmtDisplayDate(preview.tier_starts_at))} → ${escapeHtml(fmtDisplayDate(preview.tier_ends_at))}</div></div>
+            <div class="list-row"><div class="muted">Current status</div><div><span class="badge ${statusBadgeClass}">${escapeHtml(resolvedStatus)}</span></div></div>
+          </div>
+        </div>
+      `;
+
+  const content = `
+    <div class="topbar">
+      <div>
+        <h1>Pricing preview</h1>
+        <div class="sub">
+          Preview the currently assigned pricing rule for a customer email. This helps validate your PriceGuard configuration before merchant testing.
+        </div>
+      </div>
+      <div class="shop-meta">
+        <span class="pill">Shop: ${escapeHtml(shop)}</span>
+      </div>
+    </div>
+
+    ${renderNav(shop, host, "preview")}
+
+    <div class="grid">
+      <div class="stack">
+        <div class="card">
+          <h2>Lookup customer pricing</h2>
+          <form method="get" action="/pricing-preview">
+            <input type="hidden" name="shop" value="${escapeHtml(shop)}" />
+            ${host ? `<input type="hidden" name="host" value="${escapeHtml(host)}" />` : ""}
+            <div class="form-grid">
+              <div class="field full">
+                <label for="customer_email">Customer email</label>
+                <input id="customer_email" name="customer_email" type="email" value="${escapeHtml(customerEmail)}" placeholder="buyer@example.com" required />
+              </div>
+            </div>
+            <div class="actions">
+              <button class="btn primary" type="submit">Preview pricing</button>
+              <button type="button" class="btn" onclick="window.location.href='${getEmbeddedAppUrl(shop, host, "/customer-assignments")}';">Back to assignments</button>
+            </div>
+          </form>
+        </div>
+
+        ${resultCard}
+      </div>
+
+      <div class="stack">
+        <div class="card">
+          <h2>What this shows</h2>
+          <div class="list">
+            <div class="list-row"><div>Assigned tier</div><div class="muted">Latest matching assignment</div></div>
+            <div class="list-row"><div>Discount</div><div class="muted">Type and value from tier</div></div>
+            <div class="list-row"><div>Status</div><div class="muted">Based on enabled state and dates</div></div>
+            <div class="list-row"><div>Validation</div><div class="muted">Useful before storefront testing</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  return renderLayout({ shop, host, apiKey, title: "PriceGuard | Pricing preview", content });
+}
+
+
+app.get("/pricing-preview", async (req, res) => {
+  try {
+    const shop = sanitizeShop(req.query.shop);
+    const host = String(req.query.host || "");
+    const customerEmail = String(req.query.customer_email || "").trim();
+
+    if (!shop) {
+      return res.status(400).send("Missing or invalid shop.");
+    }
+
+    const dashboard = await getDashboardData(shop);
+    if (!dashboard) {
+      return res.status(404).send("Shop not found.");
+    }
+
+    let preview = null;
+    if (customerEmail) {
+      preview = await getPricingPreview(dashboard.shop.id, customerEmail);
+    }
+
+    return res.send(renderPricingPreviewPage({
+      shop,
+      host,
+      apiKey: process.env.SHOPIFY_API_KEY || "",
+      customerEmail,
+      preview
+    }));
+  } catch (e) {
+    return res.status(500).send(`Pricing preview load failed: ${escapeHtml(e.message)}`);
   }
 });
 
