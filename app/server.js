@@ -1,5 +1,6 @@
 require("dotenv").config();
 const express = require("express");
+const path = require("path");
 const { Pool } = require("pg");
 const {
   sanitizeShop,
@@ -18,6 +19,7 @@ const pool = new Pool({
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use("/assets", express.static(path.join(__dirname, "public")));
 
 async function shopifyAdminGraphQL(shopDomain, accessToken, query, variables = {}) {
   const apiVersion = "2026-04";
@@ -443,9 +445,174 @@ function renderLayout({ shop, host, apiKey, title, content }) {
         .mini-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); }
         .form-grid { grid-template-columns:1fr; }
       }
+    
+      .page-shell {
+        max-width: 1180px;
+        margin: 24px auto 40px;
+        padding: 0 16px;
+      }
+
+      .brand-hero {
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
+        border-radius: 24px;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+        padding: 20px 22px;
+        margin-bottom: 18px;
+      }
+
+      .brand-hero-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 18px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+
+      .brand-hero-left {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        min-width: 0;
+      }
+
+      .brand-logo-wrap {
+        width: 60px;
+        height: 60px;
+        border-radius: 18px;
+        background: #f8fafc;
+        border: 1px solid #e5e7eb;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        overflow: hidden;
+      }
+
+      .brand-logo-wrap img {
+        width: 42px;
+        height: 42px;
+        object-fit: contain;
+        display: block;
+      }
+
+      .brand-logo-fallback {
+        width: 42px;
+        height: 42px;
+        border-radius: 14px;
+        background: linear-gradient(135deg, #9acb4d 0%, #6fa53a 100%);
+        color: #0b1f55;
+        font-weight: 800;
+        font-size: 18px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .brand-copy h1 {
+        margin: 0;
+        font-size: 28px;
+        line-height: 1.1;
+        color: #111827;
+      }
+
+      .brand-copy .sub {
+        margin-top: 6px;
+        color: #667085;
+        font-size: 14px;
+        line-height: 1.5;
+        max-width: 720px;
+      }
+
+      .brand-meta {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+
+      .status-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border-radius: 999px;
+        padding: 8px 12px;
+        font-size: 12px;
+        font-weight: 700;
+        border: 1px solid #dbe7d1;
+        background: #f3faee;
+        color: #2f6f2f;
+      }
+
+      .status-pill::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: #72b043;
+      }
+
+      .brand-meta .pill {
+        border-radius: 999px;
+        padding: 8px 12px;
+        font-size: 12px;
+        font-weight: 600;
+        border: 1px solid #e5e7eb;
+        background: #ffffff;
+        color: #344054;
+      }
+
+      .brand-nav {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 18px;
+      }
+
+      .brand-nav .btn {
+        border-radius: 14px;
+        font-weight: 700;
+      }
+
+      .card {
+        border: 1px solid #e5e7eb !important;
+        border-radius: 22px !important;
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+      }
+
+      .btn.primary {
+        background: #0b1f55 !important;
+        border-color: #0b1f55 !important;
+        color: #ffffff !important;
+      }
+
+      .btn {
+        border-radius: 14px !important;
+      }
+
+      .badge.live {
+        background: #eaf7e4 !important;
+        color: #2f6f2f !important;
+      }
+
+      .empty {
+        border-radius: 18px;
+      }
+
+      @media (max-width: 900px) {
+        .brand-hero-top {
+          align-items: flex-start;
+        }
+
+        .brand-copy h1 {
+          font-size: 24px;
+        }
+      }
+
     </style>
   </head>
   <body>
+    <div class="page-shell">
     <div class="wrap">
       ${content}
     </div>
@@ -460,6 +627,7 @@ function renderLayout({ shop, host, apiKey, title, content }) {
         });
       }
     </script>
+      </div>
   </body>
 </html>
   `;
@@ -497,6 +665,40 @@ function renderPublicHome() {
       </body>
     </html>
   `;
+}
+
+
+function renderBrandHero(opts) {
+  const shop = opts.shop || "";
+  const host = opts.host || "";
+  const planName = opts.planName || "free";
+  const statusText = opts.statusText || "active";
+  const title = opts.title || "PriceGuard";
+  const subtitle = opts.subtitle || "";
+  const active = opts.active || "dashboard";
+
+  const logoHtml =
+    '<img src="/assets/priceguard-logo.png" alt="PriceGuard logo" onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'flex\';" />' +
+    '<div class="brand-logo-fallback" style="display:none;">PG</div>';
+
+  return ''
+    + '<div class="brand-hero">'
+    +   '<div class="brand-hero-top">'
+    +     '<div class="brand-hero-left">'
+    +       '<div class="brand-logo-wrap">' + logoHtml + '</div>'
+    +       '<div class="brand-copy">'
+    +         '<h1>' + escapeHtml(title) + '</h1>'
+    +         '<div class="sub">' + escapeHtml(subtitle) + '</div>'
+    +       '</div>'
+    +     '</div>'
+    +     '<div class="brand-meta">'
+    +       '<span class="status-pill">' + escapeHtml(statusText) + '</span>'
+    +       '<span class="pill">Shop: ' + escapeHtml(shop) + '</span>'
+    +       '<span class="pill">Plan: ' + escapeHtml(planName) + '</span>'
+    +     '</div>'
+    +   '</div>'
+    +   '<div class="brand-nav">' + renderNav(shop, host, active) + '</div>'
+    + '</div>';
 }
 
 function renderNav(shop, host, active) {
@@ -548,21 +750,15 @@ function renderDashboard({ shop, apiKey, dashboard, host }) {
   `).join("");
 
   const content = `
-    <div class="topbar">
-      <div>
-        <h1>PriceGuard</h1>
-        <div class="sub">
-          Give every trade customer the right price automatically. Start with one trade customer on the free plan, then scale with tiers, overrides and CSV imports.
-        </div>
-      </div>
-      <div class="shop-meta">
-        <span class="pill">Shop: ${shopSafe}</span>
-        <span class="pill">Plan: ${planName}</span>
-        <span class="pill">Status: ${planStatus}</span>
-      </div>
-    </div>
-
-    ${renderNav(shop, host, "dashboard")}
+    ${renderBrandHero({
+      shop,
+      host,
+      planName: dashboard.shop.plan_name || "free",
+      statusText: dashboard.shop.plan_status || "active",
+      title: "PriceGuard",
+      subtitle: "Customer pricing control for trade, wholesale and VIP accounts.",
+      active: "dashboard"
+    })}
 
     <div class="grid">
       <div class="stack">
@@ -607,7 +803,7 @@ function renderDashboard({ shop, apiKey, dashboard, host }) {
         <div class="card">
           <h2>Getting started</h2>
           <div class="muted">
-            Use PriceGuard to control which customers receive special pricing. Start by creating one tier, assign one customer, and validate the setup before expanding your configuration.
+            Use PriceGuard to control which customers receive special pricing. Start with one tier, assign one customer, then validate the result in Pricing preview.
           </div>
         </div>
       </div>
@@ -669,21 +865,15 @@ function renderPricingTiersPage({ shop, host, apiKey, dashboard, tiers }) {
     `;
 
   const content = `
-    <div class="topbar">
-      <div>
-        <h1>Pricing tiers</h1>
-        <div class="sub">
-          Create trade pricing rules with effective dates. This is the core building block for customer-specific wholesale pricing.
-        </div>
-      </div>
-      <div class="shop-meta">
-        <span class="pill">Shop: ${escapeHtml(shop)}</span>
-        <span class="pill">Plan: ${escapeHtml(dashboard.shop.plan_name || "free")}</span>
-        <span class="pill">Trade customers limit: ${escapeHtml(String(dashboard.settings.free_plan_customer_limit || 1))}</span>
-      </div>
-    </div>
-
-    ${renderNav(shop, host, "tiers")}
+    ${renderBrandHero({
+      shop,
+      host,
+      planName: dashboard.shop.plan_name || "free",
+      statusText: "pricing active",
+      title: "Pricing tiers",
+      subtitle: "Create trade pricing rules with effective dates. Use tiers to manage wholesale, VIP and campaign pricing.",
+      active: "tiers"
+    })}
 
     <div class="grid">
       <div class="stack">
@@ -816,21 +1006,15 @@ function renderCustomerAssignmentsPage({ shop, host, apiKey, dashboard, tiers, a
     : tiers.map((tier) => `<option value="${tier.id}">${escapeHtml(tier.name)}${tier.customer_tag ? ` (${escapeHtml(tier.customer_tag)})` : ""}</option>`).join("");
 
   const content = `
-    <div class="topbar">
-      <div>
-        <h1>Customer assignments</h1>
-        <div class="sub">
-          Connect trade customers to pricing tiers with optional effective dates. This is how the free plan proves value with one trade customer.
-        </div>
-      </div>
-      <div class="shop-meta">
-        <span class="pill">Shop: ${escapeHtml(shop)}</span>
-        <span class="pill">Plan: ${escapeHtml(dashboard.shop.plan_name || "free")}</span>
-        <span class="pill">Trade customers limit: ${escapeHtml(String(customerLimit))}</span>
-      </div>
-    </div>
-
-    ${renderNav(shop, host, "assignments")}
+    ${renderBrandHero({
+      shop,
+      host,
+      planName: dashboard.shop.plan_name || "free",
+      statusText: "manual setup",
+      title: "Customer assignments",
+      subtitle: "Link customers to pricing tiers and validate which accounts should receive special pricing.",
+      active: "assignments"
+    })}
 
     <div class="grid">
       <div class="stack">
@@ -1309,19 +1493,15 @@ function renderPricingPreviewPage({ shop, host, apiKey, customerEmail = "", prev
       `;
 
   const content = `
-    <div class="topbar">
-      <div>
-        <h1>Pricing preview</h1>
-        <div class="sub">
-          Preview the currently assigned pricing rule for a customer email. This helps validate your PriceGuard configuration before merchant testing.
-        </div>
-      </div>
-      <div class="shop-meta">
-        <span class="pill">Shop: ${escapeHtml(shop)}</span>
-      </div>
-    </div>
-
-    ${renderNav(shop, host, "preview")}
+    ${renderBrandHero({
+      shop,
+      host,
+      planName: "preview",
+      statusText: "validation",
+      title: "Pricing preview",
+      subtitle: "Preview the currently resolved pricing rule for a customer email before testing in-store.",
+      active: "preview"
+    })}
 
     <div class="grid">
       <div class="stack">
