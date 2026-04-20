@@ -457,7 +457,7 @@ function renderLayout({ shop, host, apiKey, title, content }) {
         border: 1px solid #e5e7eb;
         border-radius: 24px;
         box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
-        padding: 20px 22px;
+        padding: 18px 22px;
         margin-bottom: 18px;
       }
 
@@ -566,12 +566,13 @@ function renderLayout({ shop, host, apiKey, title, content }) {
         display: flex;
         gap: 10px;
         flex-wrap: wrap;
-        margin-top: 18px;
+        margin-top: 16px;
       }
 
       .brand-nav .btn {
         border-radius: 14px;
         font-weight: 700;
+        padding: 10px 16px;
       }
 
       .card {
@@ -597,6 +598,8 @@ function renderLayout({ shop, host, apiKey, title, content }) {
 
       .empty {
         border-radius: 18px;
+        border: 1px dashed #d8dee8;
+        background: #fafbfc;
       }
 
       @media (max-width: 900px) {
@@ -651,7 +654,7 @@ function renderPublicHome() {
       <body>
         <div class="card">
           <h1>PriceGuard</h1>
-          <p>Embedded app shell is ready.</p>
+          <p>Embedded App shell is ready.</p>
           <form class="row" method="get" action="/install">
             <input name="shop" placeholder="store-name.myshopify.com" />
             <button type="submit">Install app</button>
@@ -754,16 +757,16 @@ function renderDashboard({ shop, apiKey, dashboard, host }) {
       shop,
       host,
       planName: dashboard.shop.plan_name || "free",
-      statusText: dashboard.shop.plan_status || "active",
+      statusText: "Active",
       title: "PriceGuard",
-      subtitle: "Customer pricing control for trade, wholesale and VIP accounts.",
+      subtitle: "Customer pricing control for Trade, Wholesale and VIP accounts.",
       active: "dashboard"
     })}
 
     <div class="grid">
       <div class="stack">
         <div class="card">
-          <h2>Get started</h2>
+          <h2>Get Started</h2>
           <div class="muted">
             PriceGuard is ready to configure. Create a pricing tier, assign a customer to that tier, and then test the setup with a customer account in your Shopify store.
           </div>
@@ -774,7 +777,7 @@ function renderDashboard({ shop, apiKey, dashboard, host }) {
           </div>
 
           <div class="mini-grid">
-            <div class="stat"><div class="stat-label">Trade customers used</div><div class="stat-value">${escapeHtml(usageText)}</div></div>
+            <div class="stat"><div class="stat-label">Trade Customers</div><div class="stat-value">${escapeHtml(usageText)}</div></div>
             <div class="stat"><div class="stat-label">Pricing tiers</div><div class="stat-value">${dashboard.counts.tiers}</div></div>
             <div class="stat"><div class="stat-label">Price overrides</div><div class="stat-value">${dashboard.counts.overrides}</div></div>
             <div class="stat"><div class="stat-label">CSV imports</div><div class="stat-value">${dashboard.counts.imports}</div></div>
@@ -789,19 +792,19 @@ function renderDashboard({ shop, apiKey, dashboard, host }) {
 
       <div class="stack">
         <div class="card">
-          <h2>Current setup</h2>
+          <h2>Current Setup</h2>
           <div class="list">
-            <div class="list-row"><div class="muted">Embedded app</div><div class="success">${host ? "Ready" : "Direct preview mode"}</div></div>
-            <div class="list-row"><div class="muted">Install status</div><div>${dashboard.shop.installed_at ? "Installed" : "Not installed"}</div></div>
-            <div class="list-row"><div class="muted">Installed at</div><div>${escapeHtml(installedAt)}</div></div>
-            <div class="list-row"><div class="muted">Onboarding complete</div><div>${onboardingDone ? "Yes" : "Not yet"}</div></div>
-            <div class="list-row"><div class="muted">Pricing display mode</div><div>${escapeHtml(dashboard.settings.pricing_display_mode || "replace")}</div></div>
-            <div class="list-row"><div class="muted">App enabled</div><div>${dashboard.settings.app_enabled ? "Yes" : "No"}</div></div>
+            <div class="list-row"><div class="muted">Embedded App</div><div class="success">${host ? "Ready" : "Direct preview mode"}</div></div>
+            <div class="list-row"><div class="muted">Install Status</div><div>${dashboard.shop.installed_at ? "Installed" : "Not installed"}</div></div>
+            <div class="list-row"><div class="muted">Installed At</div><div>${escapeHtml(installedAt)}</div></div>
+            <div class="list-row"><div class="muted">Onboarding Complete</div><div>${onboardingDone ? "Yes" : "Not yet"}</div></div>
+            <div class="list-row"><div class="muted">Pricing Display Mode</div><div>${escapeHtml(dashboard.settings.pricing_display_mode || "replace")}</div></div>
+            <div class="list-row"><div class="muted">App Enabled</div><div>${dashboard.settings.app_enabled ? "Yes" : "No"}</div></div>
           </div>
         </div>
 
         <div class="card">
-          <h2>Getting started</h2>
+          <h2>How PriceGuard Works</h2>
           <div class="muted">
             Use PriceGuard to control which customers receive special pricing. Start with one tier, assign one customer, then validate the result in Pricing preview.
           </div>
@@ -869,7 +872,7 @@ function renderPricingTiersPage({ shop, host, apiKey, dashboard, tiers }) {
       shop,
       host,
       planName: dashboard.shop.plan_name || "free",
-      statusText: "pricing active",
+      statusText: "Pricing Active",
       title: "Pricing tiers",
       subtitle: "Create trade pricing rules with effective dates. Use tiers to manage wholesale, VIP and campaign pricing.",
       active: "tiers"
@@ -953,7 +956,7 @@ function renderCustomerAssignmentsPage({ shop, host, apiKey, dashboard, tiers, a
   const customerLimit = Number(dashboard.settings.free_plan_customer_limit || 1);
 
   const rows = assignments.length === 0
-    ? `<div class="empty">No customer assignments yet. Assign your first trade customer to a pricing tier below.</div>`
+    ? `<div class="empty" style="min-height:140px; display:flex; align-items:flex-start;">No customer assignments yet. Create your first customer assignment to begin validating PriceGuard.</div>`
     : `
       <div class="card">
         <h2>Existing customer assignments</h2>
@@ -1010,7 +1013,7 @@ function renderCustomerAssignmentsPage({ shop, host, apiKey, dashboard, tiers, a
       shop,
       host,
       planName: dashboard.shop.plan_name || "free",
-      statusText: "manual setup",
+      statusText: "Manual Setup",
       title: "Customer assignments",
       subtitle: "Link customers to pricing tiers and validate which accounts should receive special pricing.",
       active: "assignments"
@@ -1496,10 +1499,10 @@ function renderPricingPreviewPage({ shop, host, apiKey, customerEmail = "", prev
     ${renderBrandHero({
       shop,
       host,
-      planName: "preview",
-      statusText: "validation",
+      planName: "Preview",
+      statusText: "Validation",
       title: "Pricing preview",
-      subtitle: "Preview the currently resolved pricing rule for a customer email before testing in-store.",
+      subtitle: "Preview the currently resolved pricing rule for a customer email before testing in store.",
       active: "preview"
     })}
 
@@ -1677,7 +1680,7 @@ app.get("/app", async (req, res) => {
       host
     }));
   } catch (e) {
-    return res.status(500).send(`Embedded app load failed: ${escapeHtml(e.message)}`);
+    return res.status(500).send(`Embedded App load failed: ${escapeHtml(e.message)}`);
   }
 });
 
