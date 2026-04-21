@@ -1970,6 +1970,102 @@ app.get("/debug/shops", async (req, res) => {
   }
 });
 
+
+
+app.get('/privacy', (req, res) => {
+  res.send(`
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PriceGuard Privacy Policy</title>
+<style>
+body{
+  margin:0;
+  background:#f4f6f8;
+  color:#111827;
+  font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+.wrap{
+  max-width:900px;
+  margin:40px auto;
+  padding:0 20px;
+}
+.card{
+  background:#fff;
+  border:1px solid #e5e7eb;
+  border-radius:24px;
+  padding:32px;
+  box-shadow:0 10px 30px rgba(15,23,42,.06);
+}
+h1{
+  margin:0 0 10px;
+  font-size:34px;
+}
+h2{
+  margin:28px 0 10px;
+  font-size:22px;
+}
+p,li{
+  color:#4b5563;
+  line-height:1.65;
+}
+.small{
+  color:#6b7280;
+  font-size:14px;
+}
+a{
+  color:#0b1f55;
+  text-decoration:none;
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="card">
+<h1>Privacy Policy</h1>
+<p class="small">Last updated: 2026-04-21</p>
+
+<p>PriceGuard respects your privacy and is committed to protecting merchant data.</p>
+
+<h2>Information We Collect</h2>
+<ul>
+<li>Store information required to install and operate the app</li>
+<li>Configuration data such as pricing tiers and customer assignments</li>
+<li>Limited technical logs used for security, support and troubleshooting</li>
+</ul>
+
+<h2>How We Use Information</h2>
+<ul>
+<li>Provide customer pricing functionality inside Shopify</li>
+<li>Maintain app security and reliability</li>
+<li>Respond to support requests</li>
+<li>Improve the app experience</li>
+</ul>
+
+<h2>Data Sharing</h2>
+<p>We do not sell merchant data. Data is only shared with service providers required to operate the app or where required by law.</p>
+
+<h2>Data Retention</h2>
+<p>We retain data only as long as necessary to provide the service and meet legal obligations.</p>
+
+<h2>Security</h2>
+<p>We use reasonable technical and organisational measures to protect data.</p>
+
+<h2>Your Rights</h2>
+<p>You may request access, correction or deletion of your data where applicable.</p>
+
+<h2>Contact</h2>
+<p>Email: <a href="mailto:contact@sample-guard.com">contact@sample-guard.com</a></p>
+
+</div>
+</div>
+</body>
+</html>
+`);
+});
+
 app.listen(port, () => {
   console.log(`PriceGuard listening on ${port}`);
 });
