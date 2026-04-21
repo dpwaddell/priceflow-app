@@ -612,6 +612,203 @@ function renderLayout({ shop, host, apiKey, title, content }) {
         }
       }
 
+    
+      /* --- PriceGuard premium UI override --- */
+      body {
+        background: #f4f6f8 !important;
+      }
+
+      .page-shell {
+        max-width: 1180px !important;
+        margin: 20px auto 40px !important;
+        padding: 0 16px !important;
+      }
+
+      .brand-hero {
+        border-radius: 28px !important;
+        padding: 20px 22px 18px !important;
+        margin-bottom: 20px !important;
+        box-shadow: 0 12px 32px rgba(15, 23, 42, 0.06) !important;
+      }
+
+      .brand-hero-top {
+        gap: 18px !important;
+        align-items: center !important;
+      }
+
+      .brand-logo-wrap {
+        width: 62px !important;
+        height: 62px !important;
+        border-radius: 18px !important;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.7) !important;
+      }
+
+      .brand-logo-wrap img {
+        width: 42px !important;
+        height: 42px !important;
+        object-fit: contain !important;
+      }
+
+      .brand-copy h1 {
+        font-size: 28px !important;
+        line-height: 1.05 !important;
+        letter-spacing: -0.03em !important;
+        color: #0f172a !important;
+      }
+
+      .brand-copy .sub {
+        margin-top: 7px !important;
+        font-size: 14px !important;
+        line-height: 1.5 !important;
+        max-width: 760px !important;
+        color: #667085 !important;
+      }
+
+      .brand-meta,
+      .brand-nav,
+      .nav,
+      .actions,
+      .table-actions {
+        gap: 10px !important;
+      }
+
+      .brand-nav,
+      .nav {
+        margin-top: 16px !important;
+      }
+
+      .status-pill,
+      .brand-meta .pill {
+        padding: 8px 14px !important;
+        font-size: 12px !important;
+        font-weight: 700 !important;
+      }
+
+      .grid {
+        gap: 18px !important;
+      }
+
+      .stack {
+        gap: 18px !important;
+      }
+
+      .card {
+        border-radius: 26px !important;
+        padding: 18px !important;
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04) !important;
+      }
+
+      .card h2 {
+        margin: 0 0 14px 0 !important;
+        font-size: 18px !important;
+        line-height: 1.2 !important;
+        letter-spacing: -0.02em !important;
+        color: #111827 !important;
+      }
+
+      .muted,
+      .sub {
+        color: #667085 !important;
+        line-height: 1.45 !important;
+      }
+
+      .btn {
+        padding: 11px 16px !important;
+        border-radius: 16px !important;
+        font-weight: 700 !important;
+        font-size: 14px !important;
+        transition: all 0.15s ease !important;
+        box-shadow: 0 1px 0 rgba(255,255,255,0.7) inset !important;
+      }
+
+      .btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 14px rgba(15, 23, 42, 0.06) !important;
+      }
+
+      .btn.primary {
+        box-shadow: 0 8px 18px rgba(11, 31, 85, 0.18) !important;
+      }
+
+      .btn.primary:hover {
+        box-shadow: 0 10px 20px rgba(11, 31, 85, 0.22) !important;
+      }
+
+      .btn.small {
+        padding: 8px 12px !important;
+        border-radius: 12px !important;
+        font-size: 13px !important;
+      }
+
+      .stat,
+      .stats .card,
+      .stats > div {
+        border-radius: 18px !important;
+      }
+
+      .stats {
+        gap: 12px !important;
+        margin-top: 14px !important;
+      }
+
+      table {
+        border-collapse: collapse !important;
+      }
+
+      th {
+        font-size: 12px !important;
+        font-weight: 800 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.02em !important;
+        color: #6b7280 !important;
+        padding: 10px 10px 12px 0 !important;
+      }
+
+      td {
+        padding: 12px 10px 12px 0 !important;
+        border-top: 1px solid #edf0f3 !important;
+        color: #111827 !important;
+      }
+
+      .badge {
+        padding: 6px 10px !important;
+        border-radius: 999px !important;
+        font-size: 12px !important;
+        font-weight: 800 !important;
+      }
+
+      .empty {
+        border-radius: 20px !important;
+        border: 1px dashed #d8dee8 !important;
+        background: #fafbfc !important;
+        padding: 18px !important;
+        color: #667085 !important;
+      }
+
+      .list-row {
+        padding: 14px 0 !important;
+        border-top: 1px solid #edf0f3 !important;
+      }
+
+      input,
+      select {
+        border-radius: 14px !important;
+        padding: 12px 14px !important;
+        font-size: 14px !important;
+      }
+
+      input:focus,
+      select:focus {
+        box-shadow: 0 0 0 4px rgba(15, 23, 42, 0.04) !important;
+      }
+
+      @media (max-width: 980px) {
+        .grid {
+          grid-template-columns: 1fr !important;
+        }
+      }
+      /* --- end premium UI override --- */
+
     </style>
   </head>
   <body>
@@ -712,9 +909,9 @@ function renderNav(shop, host, active) {
   return `
     <div class="nav">
       <button type="button" class="btn ${active === "dashboard" ? "primary" : ""}" onclick="window.location.href='${dashUrl}'">Dashboard</button>
-      <button type="button" class="btn ${active === "tiers" ? "primary" : ""}" onclick="window.location.href='${tiersUrl}'">Pricing tiers</button>
-      <button type="button" class="btn ${active === "assignments" ? "primary" : ""}" onclick="window.location.href='${assignmentsUrl}'">Customer assignments</button>
-      <button type="button" class="btn ${active === "preview" ? "primary" : ""}" onclick="window.location.href='${previewUrl}'">Pricing preview</button>
+      <button type="button" class="btn ${active === "tiers" ? "primary" : ""}" onclick="window.location.href='${tiersUrl}'">Pricing Tiers</button>
+      <button type="button" class="btn ${active === "assignments" ? "primary" : ""}" onclick="window.location.href='${assignmentsUrl}'">Customer Assignments</button>
+      <button type="button" class="btn ${active === "preview" ? "primary" : ""}" onclick="window.location.href='${previewUrl}'">Pricing Preview</button>
     </div>
   `;
 }
@@ -778,7 +975,7 @@ function renderDashboard({ shop, apiKey, dashboard, host }) {
 
           <div class="mini-grid">
             <div class="stat"><div class="stat-label">Trade Customers</div><div class="stat-value">${escapeHtml(usageText)}</div></div>
-            <div class="stat"><div class="stat-label">Pricing tiers</div><div class="stat-value">${dashboard.counts.tiers}</div></div>
+            <div class="stat"><div class="stat-label">Pricing Tiers</div><div class="stat-value">${dashboard.counts.tiers}</div></div>
             <div class="stat"><div class="stat-label">Price Overrides</div><div class="stat-value">${dashboard.counts.overrides}</div></div>
             <div class="stat"><div class="stat-label">CSV Imports</div><div class="stat-value">${dashboard.counts.imports}</div></div>
           </div>
@@ -806,7 +1003,7 @@ function renderDashboard({ shop, apiKey, dashboard, host }) {
         <div class="card">
           <h2>How PriceGuard Works</h2>
           <div class="muted">
-            Use PriceGuard to control which customers receive special pricing. Start with one tier, assign one customer, then validate the result in Pricing preview.
+            Use PriceGuard to control which customers receive special pricing. Start with one tier, assign one customer, then validate the result in Pricing Preview.
           </div>
         </div>
       </div>
@@ -873,7 +1070,7 @@ function renderPricingTiersPage({ shop, host, apiKey, dashboard, tiers }) {
       host,
       planName: dashboard.shop.plan_name || "free",
       statusText: "Pricing Active",
-      title: "Pricing tiers",
+      title: "Pricing Tiers",
       subtitle: "Create trade pricing rules with effective dates. Use tiers to manage wholesale, VIP and campaign pricing.",
       active: "tiers"
     })}
@@ -949,7 +1146,7 @@ function renderPricingTiersPage({ shop, host, apiKey, dashboard, tiers }) {
     </div>
   `;
 
-  return renderLayout({ shop, host, apiKey, title: "PriceGuard | Pricing tiers", content });
+  return renderLayout({ shop, host, apiKey, title: "PriceGuard | Pricing Tiers", content });
 }
 
 function renderCustomerAssignmentsPage({ shop, host, apiKey, dashboard, tiers, assignments }) {
@@ -1014,7 +1211,7 @@ function renderCustomerAssignmentsPage({ shop, host, apiKey, dashboard, tiers, a
       host,
       planName: dashboard.shop.plan_name || "free",
       statusText: "Manual Setup",
-      title: "Customer assignments",
+      title: "Customer Assignments",
       subtitle: "Link customers to pricing tiers and validate which accounts should receive special pricing.",
       active: "assignments"
     })}
@@ -1089,7 +1286,7 @@ function renderCustomerAssignmentsPage({ shop, host, apiKey, dashboard, tiers, a
     </div>
   `;
 
-  return renderLayout({ shop, host, apiKey, title: "PriceGuard | Customer assignments", content });
+  return renderLayout({ shop, host, apiKey, title: "PriceGuard | Customer Assignments", content });
 }
 
 app.get("/", async (req, res) => {
@@ -1136,7 +1333,7 @@ app.get("/pricing-tiers", async (req, res) => {
       tiers
     }));
   } catch (e) {
-    return res.status(500).send(`Pricing tiers load failed: ${escapeHtml(e.message)}`);
+    return res.status(500).send(`Pricing Tiers load failed: ${escapeHtml(e.message)}`);
   }
 });
 
@@ -1292,7 +1489,7 @@ app.get("/customer-assignments", async (req, res) => {
       prefillId: useId
     }));
   } catch (e) {
-    return res.status(500).send(`Customer assignments load failed: ${escapeHtml(e.message)}`);
+    return res.status(500).send(`Customer Assignments load failed: ${escapeHtml(e.message)}`);
   }
 });
 
@@ -1501,7 +1698,7 @@ function renderPricingPreviewPage({ shop, host, apiKey, customerEmail = "", prev
       host,
       planName: "Preview",
       statusText: "Validation",
-      title: "Pricing preview",
+      title: "Pricing Preview",
       subtitle: "Preview the currently resolved pricing rule for a customer email before testing in store.",
       active: "preview"
     })}
@@ -1543,7 +1740,7 @@ function renderPricingPreviewPage({ shop, host, apiKey, customerEmail = "", prev
     </div>
   `;
 
-  return renderLayout({ shop, host, apiKey, title: "PriceGuard | Pricing preview", content });
+  return renderLayout({ shop, host, apiKey, title: "PriceGuard | Pricing Preview", content });
 }
 
 
@@ -1575,7 +1772,7 @@ app.get("/pricing-preview", async (req, res) => {
       preview
     }));
   } catch (e) {
-    return res.status(500).send(`Pricing preview load failed: ${escapeHtml(e.message)}`);
+    return res.status(500).send(`Pricing Preview load failed: ${escapeHtml(e.message)}`);
   }
 });
 
