@@ -809,7 +809,60 @@ function renderLayout({ shop, host, apiKey, title, content }) {
       }
       /* --- end premium UI override --- */
 
-    </style>
+    
+/* final submission polish safe */
+.brand-hero{
+  padding:16px 22px 14px !important;
+}
+
+.brand-nav,.nav{
+  margin-top:12px !important;
+}
+
+.card{
+  padding:16px !important;
+}
+
+.card h2{
+  margin-bottom:12px !important;
+}
+
+.stats{
+  margin-top:12px !important;
+  gap:10px !important;
+}
+
+.stat{
+  padding:12px !important;
+}
+
+.stat-label{
+  font-size:12px !important;
+  color:#6b7280 !important;
+}
+
+.stat-value{
+  font-size:18px !important;
+  font-weight:800 !important;
+}
+
+.check-row{
+  padding:12px 0 !important;
+}
+
+.check-icon.todo{
+  opacity:.75;
+}
+
+.list-row{
+  padding:12px 0 !important;
+}
+
+.empty{
+  min-height:auto !important;
+}
+
+</style>
   </head>
   <body>
     <div class="page-shell">
@@ -969,8 +1022,8 @@ function renderDashboard({ shop, apiKey, dashboard, host }) {
           </div>
 
           <div class="actions">
-            <a class="btn primary" href="${tierUrl}">Create first tier</a>
-            <a class="btn" href="${assignmentsUrl}">Assign customer</a>
+            <a class="btn primary" href="${tierUrl}">Create First Pricing Tier</a>
+            <a class="btn" href="${assignmentsUrl}">Assign Customer</a>
           </div>
 
           <div class="mini-grid">
@@ -1003,7 +1056,7 @@ function renderDashboard({ shop, apiKey, dashboard, host }) {
         <div class="card">
           <h2>How PriceGuard Works</h2>
           <div class="muted">
-            Use PriceGuard to control which customers receive special pricing. Start with one tier, assign one customer, then validate the result in Pricing Preview.
+            Create pricing tiers, assign customers, and validate pricing before launch.
           </div>
         </div>
       </div>
