@@ -208,7 +208,9 @@
   }
 
   async function fetchResolvedPrice(productId) {
-    const url = `${proxyBase}?product_id=${encodeURIComponent(productId)}`;
+    const tags = Array.isArray(PG.customerTags) ? PG.customerTags.join(",") : "";
+    const email = PG.customerEmail || "";
+    const url = `${proxyBase}?product_id=${encodeURIComponent(productId)}&customer_email=${encodeURIComponent(email)}&customer_tags=${encodeURIComponent(tags)}`;
     const res = await fetch(url, {
       credentials: "same-origin",
       headers: { Accept: "application/json" }
@@ -235,6 +237,7 @@
     try {
       log("Refreshing price because:", reason, "productId:", productId);
       const data = await fetchResolvedPrice(productId);
+      log("Resolved storefront pricing payload", data);
       applyResolvedPrice(data);
     } catch (err) {
       console.warn("[PriceGuard] pricing refresh failed", err);

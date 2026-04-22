@@ -6,6 +6,9 @@
     window.PriceGuard.moneyFormat = {{ shop.money_format | json }};
     window.PriceGuard.productId = {{ product.id | json }};
     window.PriceGuard.productHandle = {{ product.handle | json }};
+    window.PriceGuard.customerId = {{ customer.id | json }};
+    window.PriceGuard.customerEmail = {{ customer.email | json }};
+    window.PriceGuard.customerTags = {{ customer.tags | json }};
     window.PriceGuard.debug = true;
   </script>
   {{ 'priceguard-pricing.css' | asset_url | stylesheet_tag }}

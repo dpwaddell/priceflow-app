@@ -1643,7 +1643,7 @@ app.post("/customer-assignments", async (req, res) => {
     );
 
     await writeAudit(shopRow.id, "customer_assignment_created", "customer_assignment", insert.rows[0].id, {
-      customer_email: customerEmail,
+      customer_email: resolvedCustomerEmail,
       shopify_customer_id: shopifyCustomerId,
       tier_id: tierId
     });
@@ -2020,6 +2020,35 @@ async function getPriceGuardAssignmentByShopifyCustomerId(shopId, shopifyCustome
   return res.rows[0] || null;
 }
 
+
+async function getPriceGuardTierByCustomerTags(shopId, tags) {
+  const cleaned = Array.isArray(tags)
+    ? tags.map((t) => String(t || "").trim().toLowerCase()).filter(Boolean)
+    : [];
+
+  if (!cleaned.length) return null;
+
+  const res = await pool.query(
+    `SELECT
+       pt.id AS tier_id,
+       pt.name AS tier_name,
+       pt.customer_tag,
+       pt.discount_type,
+       pt.discount_value,
+       pt.starts_at AS tier_starts_at,
+       pt.ends_at AS tier_ends_at,
+       pt.is_enabled AS tier_enabled
+     FROM pricing_tiers pt
+     WHERE pt.shop_id = $1
+       AND LOWER(COALESCE(pt.customer_tag, '')) = ANY($2::text[])
+     ORDER BY pt.created_at DESC, pt.id DESC
+     LIMIT 1`,
+    [shopId, cleaned]
+  );
+
+  return res.rows[0] || null;
+}
+
 async function getPriceGuardAssignmentByEmail(shopId, email) {
   const res = await pool.query(
     `SELECT
@@ -2155,21 +2184,42 @@ function calculatePriceGuardDisplayPrice(baseAmount, discountType, discountValue
   return base;
 }
 
-async function resolvePriceGuardAssignment(shop, loggedInCustomerId) {
+async function resolvePriceGuardAssignment(shop, loggedInCustomerId, customerTags = [], customerEmail = "") {
   let assignment = await getPriceGuardAssignmentByShopifyCustomerId(shop.id, loggedInCustomerId);
   if (assignment) {
-    return { assignment, customerEmail: assignment.customer_email || "" };
+    return { assignment, customerEmail: assignment.customer_email || customerEmail || "" };
   }
 
-  const customer = await getPriceGuardShopifyCustomerBasic(shop.shop_domain, shop.access_token, loggedInCustomerId);
-  const email = String(customer?.email || "").trim();
-
-  if (!email) {
-    return { assignment: null, customerEmail: "" };
+  if (customerEmail) {
+    assignment = await getPriceGuardAssignmentByEmail(shop.id, customerEmail);
+    if (assignment) {
+      return { assignment, customerEmail };
+    }
   }
 
-  assignment = await getPriceGuardAssignmentByEmail(shop.id, email);
-  return { assignment, customerEmail: email };
+  const tier = await getPriceGuardTierByCustomerTags(shop.id, customerTags);
+  if (!tier) {
+    return { assignment: null, customerEmail };
+  }
+
+  return {
+    assignment: {
+      customer_email: resolvedCustomerEmail || "",
+      shopify_customer_id: String(loggedInCustomerId || ""),
+      assignment_starts_at: null,
+      assignment_ends_at: null,
+      assignment_enabled: true,
+      tier_id: tier.tier_id,
+      tier_name: tier.tier_name,
+      customer_tag: tier.customer_tag,
+      discount_type: tier.discount_type,
+      discount_value: tier.discount_value,
+      tier_starts_at: tier.tier_starts_at,
+      tier_ends_at: tier.tier_ends_at,
+      tier_enabled: tier.tier_enabled
+    },
+    customerEmail
+  };
 }
 
 app.get("/proxy/price", async (req, res) => {
@@ -2183,6 +2233,11 @@ app.get("/proxy/price", async (req, res) => {
     const shopDomain = String(query.shop || "").trim();
     const loggedInCustomerId = String(query.logged_in_customer_id || "").trim();
     const productId = String(query.product_id || "").trim();
+    const customerEmail = String(query.customer_email || "").trim();
+    const customerTags = String(query.customer_tags || "")
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
 
     if (!shopDomain || !productId) {
       return res.status(400).json({ ok: false, error: "Missing shop or product_id" });
@@ -2202,7 +2257,12 @@ app.get("/proxy/price", async (req, res) => {
       return res.status(404).json({ ok: false, error: "Shop not found" });
     }
 
-    const { assignment, customerEmail } = await resolvePriceGuardAssignment(shop, loggedInCustomerId);
+    const { assignment, customerEmail: resolvedCustomerEmail } = await resolvePriceGuardAssignment(
+      shop,
+      loggedInCustomerId,
+      customerTags,
+      customerEmail
+    );
     if (!assignment) {
       return res.json({
         ok: true,
@@ -2210,7 +2270,7 @@ app.get("/proxy/price", async (req, res) => {
         has_assignment: false,
         product_id: productId,
         customer_id: loggedInCustomerId,
-        customer_email: customerEmail
+        customer_email: resolvedCustomerEmail
       });
     }
 
@@ -2233,7 +2293,7 @@ app.get("/proxy/price", async (req, res) => {
         active: false,
         product_id: productId,
         customer_id: loggedInCustomerId,
-        customer_email: customerEmail || assignment.customer_email || "",
+        customer_email: resolvedCustomerEmail || assignment.customer_email || "",
         tier_name: assignment.tier_name
       });
     }
@@ -2259,7 +2319,7 @@ app.get("/proxy/price", async (req, res) => {
       active: true,
       product_id: productId,
       customer_id: loggedInCustomerId,
-      customer_email: customerEmail || assignment.customer_email || "",
+      customer_email: resolvedCustomerEmail || assignment.customer_email || "",
       product_title: product.title,
       handle: product.handle,
       currency_code: product.priceRangeV2?.minVariantPrice?.currencyCode || "GBP",
