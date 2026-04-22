@@ -1,0 +1,18 @@
+{% if customer %}
+  <script>
+    window.PriceGuard = window.PriceGuard || {};
+    window.PriceGuard.proxyBase = '/apps/priceguard/price';
+    window.PriceGuard.customerLoggedIn = true;
+    window.PriceGuard.moneyFormat = {{ shop.money_format | json }};
+  </script>
+  {{ 'priceguard-pricing.css' | asset_url | stylesheet_tag }}
+  {{ 'priceguard-pricing.js' | asset_url | script_tag }}
+{% endif %}
+
+{% schema %}
+{
+  "name": "PriceGuard pricing",
+  "target": "body",
+  "settings": []
+}
+{% endschema %}

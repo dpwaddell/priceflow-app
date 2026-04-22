@@ -1,0 +1,18 @@
+.priceguard-tier-badge {
+  display: inline-flex;
+  margin-top: 8px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #edf7e8;
+  color: #2f6f2f;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.priceguard-compare-price {
+  margin-top: 6px;
+  color: #667085;
+  font-size: 13px;
+  line-height: 1.3;
+}

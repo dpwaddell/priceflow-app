@@ -1947,6 +1947,336 @@ app.post("/webhooks/compliance", express.raw({ type: "application/json" }), asyn
   }
 });
 
+
+
+function verifyPriceGuardAppProxySignature(query) {
+  const secret = process.env.SHOPIFY_API_SECRET || "";
+  const signature = String(query.signature || "");
+  if (!secret || !signature) return false;
+
+  const params = { ...query };
+  delete params.signature;
+
+  const message = Object.keys(params)
+    .sort()
+    .map((key) => {
+      const value = Array.isArray(params[key]) ? params[key].join(",") : String(params[key] ?? "");
+      return `${key}=${value}`;
+    })
+    .join("");
+
+  const digest = crypto
+    .createHmac("sha256", secret)
+    .update(message)
+    .digest("hex");
+
+  try {
+    const a = Buffer.from(digest, "utf8");
+    const b = Buffer.from(signature, "utf8");
+    if (a.length !== b.length) return false;
+    return crypto.timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
+
+async function getPriceGuardShopByDomain(shopDomain) {
+  const res = await pool.query(
+    `SELECT id, shop_domain, access_token
+     FROM shops
+     WHERE shop_domain = $1
+     LIMIT 1`,
+    [shopDomain]
+  );
+  return res.rows[0] || null;
+}
+
+async function getPriceGuardAssignmentByShopifyCustomerId(shopId, shopifyCustomerId) {
+  const res = await pool.query(
+    `SELECT
+       ca.id,
+       ca.customer_email,
+       ca.shopify_customer_id,
+       ca.starts_at AS assignment_starts_at,
+       ca.ends_at AS assignment_ends_at,
+       ca.is_enabled AS assignment_enabled,
+       pt.id AS tier_id,
+       pt.name AS tier_name,
+       pt.customer_tag,
+       pt.discount_type,
+       pt.discount_value,
+       pt.starts_at AS tier_starts_at,
+       pt.ends_at AS tier_ends_at,
+       pt.is_enabled AS tier_enabled
+     FROM customer_assignments ca
+     JOIN pricing_tiers pt
+       ON pt.id = ca.tier_id
+     WHERE ca.shop_id = $1
+       AND ca.shopify_customer_id = $2
+     ORDER BY ca.created_at DESC, ca.id DESC
+     LIMIT 1`,
+    [shopId, String(shopifyCustomerId)]
+  );
+  return res.rows[0] || null;
+}
+
+async function getPriceGuardAssignmentByEmail(shopId, email) {
+  const res = await pool.query(
+    `SELECT
+       ca.id,
+       ca.customer_email,
+       ca.shopify_customer_id,
+       ca.starts_at AS assignment_starts_at,
+       ca.ends_at AS assignment_ends_at,
+       ca.is_enabled AS assignment_enabled,
+       pt.id AS tier_id,
+       pt.name AS tier_name,
+       pt.customer_tag,
+       pt.discount_type,
+       pt.discount_value,
+       pt.starts_at AS tier_starts_at,
+       pt.ends_at AS tier_ends_at,
+       pt.is_enabled AS tier_enabled
+     FROM customer_assignments ca
+     JOIN pricing_tiers pt
+       ON pt.id = ca.tier_id
+     WHERE ca.shop_id = $1
+       AND LOWER(ca.customer_email) = LOWER($2)
+     ORDER BY ca.created_at DESC, ca.id DESC
+     LIMIT 1`,
+    [shopId, email]
+  );
+  return res.rows[0] || null;
+}
+
+function isPriceGuardRuleLive(startsAt, endsAt, isEnabled) {
+  if (!isEnabled) return false;
+  const now = new Date();
+
+  if (startsAt && new Date(startsAt) > now) return false;
+  if (endsAt && new Date(endsAt) < now) return false;
+
+  return true;
+}
+
+async function priceGuardShopifyAdminGraphQL(shopDomain, accessToken, query, variables = {}) {
+  const response = await fetch(`https://${shopDomain}/admin/api/2026-04/graphql.json`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Shopify-Access-Token": accessToken,
+    },
+    body: JSON.stringify({ query, variables }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Shopify Admin GraphQL failed with ${response.status}`);
+  }
+
+  const json = await response.json();
+  if (json.errors?.length) {
+    throw new Error(JSON.stringify(json.errors));
+  }
+
+  return json.data;
+}
+
+async function getPriceGuardShopifyCustomerBasic(shopDomain, accessToken, customerId) {
+  const data = await priceGuardShopifyAdminGraphQL(
+    shopDomain,
+    accessToken,
+    `#graphql
+    query PriceGuardCustomer($id: ID!) {
+      customer(id: $id) {
+        id
+        email
+        firstName
+        lastName
+      }
+    }`,
+    { id: `gid://shopify/Customer/${customerId}` }
+  );
+
+  return data.customer || null;
+}
+
+async function getPriceGuardProductPricingContext(shopDomain, accessToken, productId) {
+  const data = await priceGuardShopifyAdminGraphQL(
+    shopDomain,
+    accessToken,
+    `#graphql
+    query PriceGuardProduct($id: ID!) {
+      product(id: $id) {
+        id
+        title
+        handle
+        featuredImage {
+          url
+        }
+        variants(first: 1) {
+          nodes {
+            id
+            price
+            compareAtPrice
+          }
+        }
+        priceRangeV2 {
+          minVariantPrice {
+            amount
+            currencyCode
+          }
+          maxVariantPrice {
+            amount
+            currencyCode
+          }
+        }
+      }
+    }`,
+    { id: `gid://shopify/Product/${productId}` }
+  );
+
+  return data.product || null;
+}
+
+function calculatePriceGuardDisplayPrice(baseAmount, discountType, discountValue) {
+  const base = Number(baseAmount || 0);
+  const value = Number(discountValue || 0);
+
+  if (!base || !value) return base;
+
+  if (discountType === "percentage") {
+    return Math.max(0, +(base * (1 - value / 100)).toFixed(2));
+  }
+
+  if (discountType === "fixed_amount") {
+    return Math.max(0, +(base - value).toFixed(2));
+  }
+
+  return base;
+}
+
+async function resolvePriceGuardAssignment(shop, loggedInCustomerId) {
+  let assignment = await getPriceGuardAssignmentByShopifyCustomerId(shop.id, loggedInCustomerId);
+  if (assignment) {
+    return { assignment, customerEmail: assignment.customer_email || "" };
+  }
+
+  const customer = await getPriceGuardShopifyCustomerBasic(shop.shop_domain, shop.access_token, loggedInCustomerId);
+  const email = String(customer?.email || "").trim();
+
+  if (!email) {
+    return { assignment: null, customerEmail: "" };
+  }
+
+  assignment = await getPriceGuardAssignmentByEmail(shop.id, email);
+  return { assignment, customerEmail: email };
+}
+
+app.get("/proxy/price", async (req, res) => {
+  try {
+    const query = req.query || {};
+
+    if (!verifyPriceGuardAppProxySignature(query)) {
+      return res.status(400).json({ ok: false, error: "Invalid app proxy signature" });
+    }
+
+    const shopDomain = String(query.shop || "").trim();
+    const loggedInCustomerId = String(query.logged_in_customer_id || "").trim();
+    const productId = String(query.product_id || "").trim();
+
+    if (!shopDomain || !productId) {
+      return res.status(400).json({ ok: false, error: "Missing shop or product_id" });
+    }
+
+    if (!loggedInCustomerId) {
+      return res.json({
+        ok: true,
+        logged_in: false,
+        has_assignment: false,
+        product_id: productId
+      });
+    }
+
+    const shop = await getPriceGuardShopByDomain(shopDomain);
+    if (!shop || !shop.access_token) {
+      return res.status(404).json({ ok: false, error: "Shop not found" });
+    }
+
+    const { assignment, customerEmail } = await resolvePriceGuardAssignment(shop, loggedInCustomerId);
+    if (!assignment) {
+      return res.json({
+        ok: true,
+        logged_in: true,
+        has_assignment: false,
+        product_id: productId,
+        customer_id: loggedInCustomerId,
+        customer_email: customerEmail
+      });
+    }
+
+    const assignmentLive = isPriceGuardRuleLive(
+      assignment.assignment_starts_at,
+      assignment.assignment_ends_at,
+      assignment.assignment_enabled
+    );
+    const tierLive = isPriceGuardRuleLive(
+      assignment.tier_starts_at,
+      assignment.tier_ends_at,
+      assignment.tier_enabled
+    );
+
+    if (!assignmentLive || !tierLive) {
+      return res.json({
+        ok: true,
+        logged_in: true,
+        has_assignment: true,
+        active: false,
+        product_id: productId,
+        customer_id: loggedInCustomerId,
+        customer_email: customerEmail || assignment.customer_email || "",
+        tier_name: assignment.tier_name
+      });
+    }
+
+    const product = await getPriceGuardProductPricingContext(shop.shop_domain, shop.access_token, productId);
+    if (!product) {
+      return res.status(404).json({ ok: false, error: "Product not found" });
+    }
+
+    const firstVariant = product.variants?.nodes?.[0] || null;
+    const basePrice = Number(firstVariant?.price || product.priceRangeV2?.minVariantPrice?.amount || 0);
+    const compareAt = firstVariant?.compareAtPrice ? Number(firstVariant.compareAtPrice) : null;
+    const finalPrice = calculatePriceGuardDisplayPrice(
+      basePrice,
+      assignment.discount_type,
+      assignment.discount_value
+    );
+
+    return res.json({
+      ok: true,
+      logged_in: true,
+      has_assignment: true,
+      active: true,
+      product_id: productId,
+      customer_id: loggedInCustomerId,
+      customer_email: customerEmail || assignment.customer_email || "",
+      product_title: product.title,
+      handle: product.handle,
+      currency_code: product.priceRangeV2?.minVariantPrice?.currencyCode || "GBP",
+      tier_name: assignment.tier_name,
+      discount_type: assignment.discount_type,
+      discount_value: Number(assignment.discount_value),
+      base_price: basePrice,
+      compare_at_price: compareAt,
+      final_price: finalPrice
+    });
+  } catch (err) {
+    console.error("[PRICEGUARD_PROXY_PRICE] failed", err);
+    return res.status(500).json({ ok: false, error: "Price resolution failed" });
+  }
+});
+
+
 app.get("/health", async (req, res) => {
   try {
     await pool.query("SELECT NOW()");
