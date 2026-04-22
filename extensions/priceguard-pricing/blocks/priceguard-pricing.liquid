@@ -4,9 +4,12 @@
     window.PriceGuard.proxyBase = '/apps/priceguard/price';
     window.PriceGuard.customerLoggedIn = true;
     window.PriceGuard.moneyFormat = {{ shop.money_format | json }};
+    window.PriceGuard.productId = {{ product.id | json }};
+    window.PriceGuard.productHandle = {{ product.handle | json }};
+    window.PriceGuard.debug = true;
   </script>
   {{ 'priceguard-pricing.css' | asset_url | stylesheet_tag }}
-  {{ 'priceguard-pricing.js' | asset_url | script_tag }}
+  <script src="{{ 'priceguard-pricing.js' | asset_url }}" defer></script>
 {% endif %}
 
 {% schema %}

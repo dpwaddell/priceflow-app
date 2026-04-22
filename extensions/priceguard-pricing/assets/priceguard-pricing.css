@@ -1,3 +1,20 @@
+.priceguard-price-wrap {
+  display: block;
+}
+
+.priceguard-final-price {
+  color: #0f172a !important;
+  font-weight: 800 !important;
+}
+
+.priceguard-original-price {
+  margin-top: 6px;
+  color: #6b7280;
+  font-size: 13px;
+  line-height: 1.3;
+  text-decoration: line-through;
+}
+
 .priceguard-tier-badge {
   display: inline-flex;
   margin-top: 8px;
@@ -8,11 +25,4 @@
   font-size: 12px;
   font-weight: 700;
   line-height: 1;
-}
-
-.priceguard-compare-price {
-  margin-top: 6px;
-  color: #667085;
-  font-size: 13px;
-  line-height: 1.3;
 }
