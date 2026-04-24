@@ -2132,6 +2132,7 @@ app.get('/customer-product-prices', requireShopSession, async (req, res) => {
     const page = Math.max(1, Number(req.query.page) || 1);
     const perPage = 25;
     const search = String(req.query.search || '').trim();
+    const pq = String(req.query.pq || '').trim();
     const offset = (page - 1) * perPage;
 
     let countQ, rowsQ;
@@ -2159,6 +2160,35 @@ app.get('/customer-product-prices', requireShopSession, async (req, res) => {
     const totalPages = Math.ceil(totalCount / perPage) || 1;
     const rows = rowsQ.rows;
     const baseUrl = getEmbeddedAppUrl(shop, host, '/customer-product-prices');
+
+    let productSearchResults = [];
+    if (pq) {
+      try {
+        const shopRow = await getPriceGuardShopByDomain(shop);
+        if (shopRow && shopRow.access_token) {
+          const psGql = `query ProductSearch($q: String!) { products(first: 10, query: $q) { nodes { id title variants(first: 5) { nodes { id sku price } } } } }`;
+          const psRes = await fetch(`https://${shop}/admin/api/2026-04/graphql.json`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': shopRow.access_token },
+            body: JSON.stringify({ query: psGql, variables: { q: `title:*${pq}*` } })
+          });
+          const psJson = await psRes.json().catch(() => ({}));
+          const nodes = psJson?.data?.products?.nodes || [];
+          productSearchResults = nodes.map(p => ({
+            id: String(p.id).replace('gid://shopify/Product/', ''),
+            title: p.title,
+            variants: (p.variants?.nodes || []).map(v => ({
+              id: String(v.id).replace('gid://shopify/ProductVariant/', ''),
+              sku: v.sku || '',
+              price: v.price || ''
+            }))
+          }));
+          console.log('[PG] server-side product search for', JSON.stringify(pq), '->', productSearchResults.length, 'results');
+        }
+      } catch (e) {
+        console.log('[PG] server-side product search error:', e.message);
+      }
+    }
 
     const tableRows = rows.length === 0
       ? `<tr><td colspan="8" class="muted" style="text-align:center;padding:20px;">No rows yet.</td></tr>`
@@ -2212,11 +2242,19 @@ app.get('/customer-product-prices', requireShopSession, async (req, res) => {
                 <div class="muted" style="margin-top:8px;font-size:12px;">CSV columns: customer_email, product_id, sku, fixed_price, currency, starts_at, ends_at, is_enabled</div>
               </form>
             </div>` : ''}
-            <form style="margin-bottom:12px;display:flex;gap:8px;" onsubmit="event.preventDefault(); window.location.href='${baseUrl}&search=' + encodeURIComponent(this.querySelector('[name=search]').value);">
-              <input name="search" value="${escapeHtml(search)}" placeholder="Search by email or SKU…" style="flex:1;padding:8px 12px;border:1px solid var(--line);border-radius:12px;" />
+            <form id="pg-search-form" style="margin-bottom:12px;display:flex;gap:8px;">
+              <input id="pg-search-input" name="search" value="${escapeHtml(search)}" placeholder="Search by email or SKU…" style="flex:1;padding:8px 12px;border:1px solid var(--line);border-radius:12px;" />
               <button class="btn small" type="submit">Search</button>
               ${search ? `<a class="btn small" href="${baseUrl}">Clear</a>` : ''}
             </form>
+            <script>
+              document.getElementById('pg-search-form').addEventListener('submit', function(e) {
+                e.preventDefault();
+                var q = document.getElementById('pg-search-input').value;
+                var base = '${baseUrl}';
+                window.location.href = base + '&search=' + encodeURIComponent(q);
+              });
+            </script>
             <table>
               <thead><tr><th>Email</th><th>Product ID</th><th>SKU</th><th>Fixed Price</th><th>Currency</th><th>From</th><th>To</th><th>Actions</th></tr></thead>
               <tbody>${tableRows}</tbody>
@@ -2232,8 +2270,13 @@ app.get('/customer-product-prices', requireShopSession, async (req, res) => {
             <form method="post" action="/customer-product-prices?shop=${encodeURIComponent(shop)}${host ? '&host=' + encodeURIComponent(host) : ''}">
               <div class="form-grid">
                 <div class="field full"><label>Customer email</label><input name="customer_email" type="email" placeholder="buyer@example.com" required /></div>
-                <div class="field"><label>Product ID</label><input name="product_id" placeholder="12345678" /></div>
-                <div class="field"><label>SKU</label><input name="sku" placeholder="PROD-001" /></div>
+                <div class="field full" style="position:relative;">
+                  <label>Product</label>
+                  <input id="pg-product-search" type="text" value="${escapeHtml(pq)}" placeholder="Search products by name…" autocomplete="off" style="width:100%;" />
+                  <input type="hidden" name="product_id" id="pg-product-id-hidden" />
+                  <div id="pg-product-results" style="display:none;position:absolute;z-index:100;top:100%;left:0;right:0;background:#fff;border:1px solid var(--line);border-radius:12px;max-height:200px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.08);"></div>
+                </div>
+                <div class="field"><label>SKU</label><input id="pg-sku-input" name="sku" placeholder="PROD-001" /></div>
                 <div class="field"><label>Fixed price</label><input name="fixed_price" type="number" step="0.01" min="0" placeholder="19.99" required /></div>
                 <div class="field"><label>Currency</label><input name="currency" placeholder="GBP" value="GBP" /></div>
                 <div class="field"><label>Effective from</label><input name="starts_at" type="datetime-local" /></div>
@@ -2242,6 +2285,64 @@ app.get('/customer-product-prices', requireShopSession, async (req, res) => {
               </div>
               <div class="actions"><button class="btn primary" type="submit">Create override</button><a class="btn" href="${getEmbeddedAppUrl(shop, host, '/')}">Back</a></div>
             </form>
+            <script>
+              window.PG_SEARCH_RESULTS = ${JSON.stringify(productSearchResults)};
+              window.PG_SEARCH_QUERY   = ${JSON.stringify(pq)};
+            </script>
+            <script>
+              (function() {
+                var searchInput = document.getElementById('pg-product-search');
+                var hiddenId    = document.getElementById('pg-product-id-hidden');
+                var results     = document.getElementById('pg-product-results');
+                var skuInput    = document.getElementById('pg-sku-input');
+                var timer;
+                var baseUrl     = '${baseUrl}';
+
+                function renderResults(data) {
+                  if (!Array.isArray(data) || data.length === 0) {
+                    results.innerHTML = '<div style="padding:10px 14px;color:#6b7280;font-size:13px;">No products found</div>';
+                  } else {
+                    results.innerHTML = data.map(function(p) {
+                      var varHtml = p.variants.map(function(v) {
+                        return '<div style="padding:6px 14px 6px 24px;font-size:12px;color:#6b7280;cursor:pointer;border-top:1px solid #f3f4f6;" data-pid="' + p.id + '" data-sku="' + v.sku + '" data-title="' + p.title.replace(/"/g,'&quot;') + '">'
+                          + (v.sku ? v.sku : 'No SKU') + ' &mdash; ' + (v.price ? '£' + v.price : '') + '</div>';
+                      }).join('');
+                      return '<div style="padding:10px 14px;font-weight:600;cursor:pointer;font-size:13px;" data-pid="' + p.id + '" data-sku="' + (p.variants[0] ? p.variants[0].sku : '') + '" data-title="' + p.title.replace(/"/g,'&quot;') + '">'
+                        + p.title + '</div>' + varHtml;
+                    }).join('');
+                  }
+                  results.style.display = 'block';
+                }
+
+                if (window.PG_SEARCH_QUERY) {
+                  renderResults(window.PG_SEARCH_RESULTS);
+                }
+
+                searchInput.addEventListener('input', function() {
+                  clearTimeout(timer);
+                  var q = searchInput.value.trim();
+                  if (q.length < 2) { results.style.display = 'none'; return; }
+                  timer = setTimeout(function() {
+                    window.location.href = baseUrl + '&pq=' + encodeURIComponent(q);
+                  }, 500);
+                });
+
+                results.addEventListener('click', function(e) {
+                  var el = e.target.closest('[data-pid]');
+                  if (!el) return;
+                  hiddenId.value    = el.dataset.pid;
+                  searchInput.value = el.dataset.title;
+                  if (el.dataset.sku) skuInput.value = el.dataset.sku;
+                  results.style.display = 'none';
+                });
+
+                document.addEventListener('click', function(e) {
+                  if (!results.contains(e.target) && e.target !== searchInput) {
+                    results.style.display = 'none';
+                  }
+                });
+              })();
+            </script>
           </div>` : `
           <div class="card">
             <h2>Growth / Pro feature</h2>
@@ -2266,6 +2367,65 @@ app.get('/customer-product-prices', requireShopSession, async (req, res) => {
     return res.send(renderLayout({ shop, host, apiKey: process.env.SHOPIFY_API_KEY || '', title: 'PriceGuard | Price Overrides', content }));
   } catch (e) {
     return res.status(500).send(`Customer product prices load failed: ${escapeHtml(e.message)}`);
+  }
+});
+
+app.options('/proxy/product-search', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', 'https://admin.shopify.com');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.sendStatus(204);
+});
+
+app.get('/proxy/product-search', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', 'https://admin.shopify.com');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  try {
+    const shop = sanitizeShop(req.query.shop);
+    const q = String(req.query.q || '').trim();
+    if (!shop) return res.status(400).json({ error: 'Missing shop.' });
+    if (!q) return res.json([]);
+
+    const shopRow = await getPriceGuardShopByDomain(shop);
+    if (!shopRow) return res.status(404).json({ error: 'Shop not found.' });
+    const { access_token } = shopRow;
+    if (!access_token) return res.status(403).json({ error: 'No access token.' });
+
+    const gqlQuery = `
+      query ProductSearch($q: String!) {
+        products(first: 10, query: $q) {
+          nodes {
+            id
+            title
+            variants(first: 5) {
+              nodes { id sku price }
+            }
+          }
+        }
+      }
+    `;
+
+    const gqlRes = await fetch(`https://${shop}/admin/api/2026-04/graphql.json`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': access_token },
+      body: JSON.stringify({ query: gqlQuery, variables: { q: `title:*${q}*` } })
+    });
+    const gqlJson = await gqlRes.json().catch(() => ({}));
+    const nodes = gqlJson?.data?.products?.nodes || [];
+
+    const results = nodes.map(p => ({
+      id: String(p.id).replace('gid://shopify/Product/', ''),
+      title: p.title,
+      variants: (p.variants?.nodes || []).map(v => ({
+        id: String(v.id).replace('gid://shopify/ProductVariant/', ''),
+        sku: v.sku || '',
+        price: v.price || ''
+      }))
+    }));
+
+    return res.json(results);
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
   }
 });
 
