@@ -2433,7 +2433,7 @@ app.get('/customer-product-prices/export.csv', requireShopSession, async (req, r
   try {
     const shop = sanitizeShop(req.query.shop);
     if (!shop) return res.status(400).send('Missing or invalid shop.');
-    const shopRow = await getShopByDomain(shop);
+    const shopRow = await getPriceGuardShopByDomain(shop);
     if (!shopRow) return res.status(404).send('Shop not found.');
 
     const result = await pool.query(
@@ -2441,11 +2441,32 @@ app.get('/customer-product-prices/export.csv', requireShopSession, async (req, r
       [shopRow.id]
     );
 
+    const productTitleMap = {};
+    const uniqueProductIds = [...new Set(result.rows.map(r => r.product_id).filter(Boolean))];
+    if (uniqueProductIds.length > 0 && shopRow.access_token) {
+      try {
+        const aliasFields = uniqueProductIds.map(id =>
+          `p${id}: product(id: "gid://shopify/Product/${id}") { title }`
+        ).join('\n');
+        const gqlData = await priceGuardShopifyAdminGraphQL(
+          shop, shopRow.access_token,
+          `#graphql\nquery ExportProductTitles {\n${aliasFields}\n}`, {}
+        );
+        for (const id of uniqueProductIds) {
+          const p = gqlData[`p${id}`];
+          if (p && p.title) productTitleMap[id] = p.title;
+        }
+      } catch (e) {
+        console.log('[PG] export product title fetch failed:', e.message);
+      }
+    }
+
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename="customer_product_prices.csv"');
-    res.write('customer_email,product_id,sku,fixed_price,currency,starts_at,ends_at,is_enabled\n');
+    res.write('customer_email,product_id,product_title,sku,fixed_price,currency,starts_at,ends_at,is_enabled\n');
     for (const r of result.rows) {
-      const cols = [r.customer_email, r.product_id || '', r.sku || '', r.fixed_price, r.currency || 'GBP', r.starts_at ? new Date(r.starts_at).toISOString() : '', r.ends_at ? new Date(r.ends_at).toISOString() : '', r.is_enabled ? '1' : '0'];
+      const productTitle = (r.product_id && productTitleMap[r.product_id]) || '';
+      const cols = [r.customer_email, r.product_id || '', productTitle, r.sku || '', r.fixed_price, r.currency || 'GBP', r.starts_at ? new Date(r.starts_at).toISOString() : '', r.ends_at ? new Date(r.ends_at).toISOString() : '', r.is_enabled ? '1' : '0'];
       res.write(cols.map(v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"').join(',') + '\n');
     }
     res.end();
@@ -3555,12 +3576,12 @@ app.get("/install", async (req, res) => {
       state
     });
 
-    oauthStates.set(shop, { state, expiresAt: Date.now() + 600000 });
-
-    res.setHeader(
-      "Set-Cookie",
-      `pg_oauth_state=${encodeURIComponent(makeSignedCookie(state))}; HttpOnly; Secure; SameSite=None; Max-Age=600; Path=/`
+    await pool.query(
+      `INSERT INTO oauth_states (shop_domain, state, expires_at) VALUES ($1, $2, NOW() + INTERVAL '10 minutes')
+       ON CONFLICT (shop_domain) DO UPDATE SET state = $2, expires_at = NOW() + INTERVAL '10 minutes'`,
+      [shop, state]
     );
+
     return res.redirect(installUrl);
   } catch (e) {
     return res.status(500).send(`Install failed: ${escapeHtml(e.message)}`);
@@ -3582,16 +3603,12 @@ app.get("/auth/callback", async (req, res) => {
       return res.status(400).send("Invalid HMAC.");
     }
 
-    let storedState = null;
-    const mapEntry = oauthStates.get(shop);
-    if (mapEntry && mapEntry.expiresAt > Date.now()) {
-      storedState = mapEntry.state;
-      oauthStates.delete(shop);
-    } else {
-      oauthStates.delete(shop);
-      const rawStateCookie = getCookieValue(req, "pg_oauth_state");
-      storedState = readSignedCookie(rawStateCookie);
-    }
+    const stateRow = await pool.query(
+      `SELECT state FROM oauth_states WHERE shop_domain = $1 AND expires_at > NOW()`,
+      [shop]
+    );
+    await pool.query(`DELETE FROM oauth_states WHERE shop_domain = $1`, [shop]);
+    const storedState = stateRow.rows[0]?.state || null;
 
     if (!storedState || !receivedState || storedState !== receivedState) {
       return res.status(400).send("OAuth state mismatch. Please try installing again.");
@@ -3613,31 +3630,9 @@ app.get("/auth/callback", async (req, res) => {
       expiresIn
     });
 
-    if (['growth', 'pro'].includes(shopRow.plan_name)) {
-      let confirmationUrl = null;
-      try {
-        const activeSub = await getActiveSubscription(shop, accessToken);
-        if (!activeSub) {
-          const appUrl = process.env.APP_URL || "https://priceguard.sample-guard.com";
-          const returnUrl = `${appUrl}/billing/callback?shop=${encodeURIComponent(shop)}`;
-          confirmationUrl = await createShopifySubscription(shop, accessToken, returnUrl, shopRow.plan_name);
-        }
-      } catch (billingErr) {
-        console.error("[BILLING] subscription check/create failed:", billingErr.message);
-      }
-
-      if (confirmationUrl) {
-        res.setHeader("Set-Cookie", "pg_oauth_state=; HttpOnly; Secure; SameSite=None; Max-Age=0; Path=/");
-        return res.redirect(confirmationUrl);
-      }
-    }
-
     const sessionKey = await createAppSession(shopRow.id, shop);
     const sessionCookieVal = encodeURIComponent(makeSignedCookie(sessionKey));
-    res.setHeader("Set-Cookie", [
-      "pg_oauth_state=; HttpOnly; Secure; SameSite=None; Max-Age=0; Path=/",
-      `pg_session=${sessionCookieVal}; HttpOnly; Secure; SameSite=None; Max-Age=86400; Path=/`
-    ]);
+    res.setHeader("Set-Cookie", `pg_session=${sessionCookieVal}; HttpOnly; Secure; SameSite=None; Max-Age=86400; Path=/`);
     return res.redirect(getEmbeddedAppUrl(shop, host, "/"));
   } catch (e) {
     return res.status(500).send(`Auth callback failed: ${escapeHtml(e.message)}`);
