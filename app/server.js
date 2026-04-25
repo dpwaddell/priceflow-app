@@ -1121,6 +1121,7 @@ function renderBrandHero(opts) {
   const shop = opts.shop || "";
   const host = opts.host || "";
   const planName = opts.planName || "free";
+  const planStatus = opts.planStatus || "";
   const statusText = opts.statusText || "active";
   const title = opts.title || "PriceGuard";
   const subtitle = opts.subtitle || "";
@@ -1162,7 +1163,13 @@ function renderBrandHero(opts) {
     +     '</div>'
     +   '</div>'
     +   '<div class="brand-nav">' + renderNav(shop, host, active) + '</div>'
-    + '</div>';
+    + '</div>'
+    + (planStatus === 'frozen'
+        ? '<div style="margin-top:12px;padding:14px 18px;background:#fef3c7;border:1px solid #fcd34d;border-radius:14px;color:#92400e;font-size:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">'
+          + '<span>⚠️ <strong>Your subscription is frozen.</strong> Please update your payment method in Shopify billing to restore access.</span>'
+          + '<a href="https://admin.shopify.com/store/' + shop.replace('.myshopify.com', '') + '/settings/apps" target="_blank" style="font-weight:700;color:#92400e;white-space:nowrap;">Shopify billing →</a>'
+          + '</div>'
+        : '');
 }
 
 function renderNav(shop, host, active) {
@@ -1223,6 +1230,7 @@ function renderDashboard({ shop, apiKey, dashboard, host }) {
       shop,
       host,
       planName: dashboard.shop.plan_name || "free",
+      planStatus: dashboard.shop.plan_status || "",
       statusText: "Active",
       title: "PriceGuard",
       subtitle: "Customer pricing control for Trade, Wholesale and VIP accounts.",
@@ -1396,6 +1404,7 @@ function renderPricingTiersPage({ shop, host, apiKey, dashboard, tiers, tierCoun
       shop,
       host,
       planName: dashboard.shop.plan_name || "free",
+      planStatus: dashboard.shop.plan_status || "",
       statusText: "Pricing Active",
       title: "Pricing Tiers",
       subtitle: "Create trade pricing rules with effective dates. Use tiers to manage wholesale, VIP and campaign pricing.",
@@ -1562,6 +1571,7 @@ function renderCustomerAssignmentsPage({ shop, host, apiKey, dashboard, tiers, a
       shop,
       host,
       planName: dashboard.shop.plan_name || "free",
+      planStatus: dashboard.shop.plan_status || "",
       statusText: "Manual Setup",
       title: "Customer Assignments",
       subtitle: "Link customers to pricing tiers and validate which accounts should receive special pricing.",
@@ -2255,7 +2265,7 @@ app.get('/customer-product-prices', requireShopSession, async (req, res) => {
     const importedMsg = req.query.imported ? `<div style="margin-bottom:12px;padding:10px 14px;background:#ecfdf5;border-radius:12px;color:#065f46;font-weight:600;">${escapeHtml(req.query.imported)} row(s) imported${req.query.skipped ? ', ' + escapeHtml(req.query.skipped) + ' skipped' : ''}.</div>` : '';
 
     const content = `
-      ${renderBrandHero({ shop, host, planName: dashboard.shop.plan_name || 'free', statusText: 'Price Overrides', title: 'Customer Product Prices', subtitle: 'Set fixed prices for specific customers on specific products, overriding tier discounts.', active: 'prices' })}
+      ${renderBrandHero({ shop, host, planName: dashboard.shop.plan_name || 'free', planStatus: dashboard.shop.plan_status || '', statusText: 'Price Overrides', title: 'Customer Product Prices', subtitle: 'Set fixed prices for specific customers on specific products, overriding tier discounts.', active: 'prices' })}
       <div class="grid">
         <div class="stack">
           <div class="card">
@@ -2982,6 +2992,55 @@ app.post("/webhooks/app/uninstalled", express.raw({ type: "application/json" }),
     return res.status(200).send("OK");
   } catch (err) {
     console.error("[SHOPIFY_WEBHOOK] app/uninstalled failed", err);
+    return res.status(200).send("OK");
+  }
+});
+
+const SUBSCRIPTION_PLAN_MAP = {
+  'PriceGuard Growth': 'growth',
+  'PriceGuard Pro':    'pro',
+};
+
+app.post("/webhooks/app/subscriptions/update", express.raw({ type: "application/json" }), async (req, res) => {
+  try {
+    if (!verifyShopifyWebhookHmac(req)) {
+      return res.status(400).send("Invalid webhook signature");
+    }
+
+    const shopDomain = req.get("X-Shopify-Shop-Domain") || "";
+    if (!shopDomain) return res.status(200).send("OK");
+
+    const payload = parseWebhookJsonBody(req);
+    const { status, name } = payload?.app_subscription || {};
+
+    if (!status) return res.status(200).send("OK");
+
+    if (status === 'ACTIVE') {
+      const newPlan = SUBSCRIPTION_PLAN_MAP[name] || 'free';
+      await pool.query(
+        `UPDATE shops SET plan_name = $1, plan_status = 'active', updated_at = NOW() WHERE shop_domain = $2`,
+        [newPlan, shopDomain]
+      );
+      console.log(`[BILLING_WEBHOOK] ${shopDomain} → ACTIVE plan=${newPlan}`);
+    } else if (['CANCELLED', 'EXPIRED', 'DECLINED'].includes(status)) {
+      await pool.query(
+        `UPDATE shops SET plan_name = 'free', plan_status = 'inactive', updated_at = NOW() WHERE shop_domain = $1`,
+        [shopDomain]
+      );
+      console.log(`[BILLING_WEBHOOK] ${shopDomain} → ${status}, reverted to free`);
+    } else if (status === 'FROZEN') {
+      await pool.query(
+        `UPDATE shops SET plan_status = 'frozen', updated_at = NOW() WHERE shop_domain = $1`,
+        [shopDomain]
+      );
+      console.log(`[BILLING_WEBHOOK] ${shopDomain} → FROZEN`);
+    } else {
+      console.log(`[BILLING_WEBHOOK] ${shopDomain} unhandled status=${status}`);
+    }
+
+    return res.status(200).send("OK");
+  } catch (err) {
+    console.error("[SHOPIFY_WEBHOOK] app/subscriptions/update failed", err);
     return res.status(200).send("OK");
   }
 });
@@ -3858,7 +3917,10 @@ app.get("/plans", requireShopSession, async (req, res) => {
 
       let ctaHtml = "";
       if (isCurrent) {
-        ctaHtml = `<div style="text-align:center;padding:12px;background:#f0fdf4;border-radius:10px;color:#16a34a;font-weight:700;font-size:14px;">Your current plan</div>`;
+        ctaHtml = `<div style="text-align:center;padding:12px;background:#f0fdf4;border-radius:10px;color:#16a34a;font-weight:700;font-size:14px;">Your current plan</div>`
+          + (plan.id !== 'free'
+              ? `<a href="https://admin.shopify.com/store/${shop.replace('.myshopify.com', '')}/settings/apps" target="_blank" style="display:block;text-align:center;margin-top:8px;padding:10px 12px;border:1px solid #d1d5db;border-radius:10px;color:#374151;font-size:14px;font-weight:600;text-decoration:none;">Manage subscription →</a>`
+              : '');
       } else if (!isLower) {
         ctaHtml = `<a href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=${plan.id}" style="display:block;text-align:center;padding:12px;background:${plan.headerBg};color:#fff;border-radius:10px;font-weight:700;font-size:14px;text-decoration:none;">Upgrade to ${escapeHtml(plan.name)}</a>`;
       }
@@ -3884,6 +3946,7 @@ app.get("/plans", requireShopSession, async (req, res) => {
         shop,
         host,
         planName: currentPlan,
+        planStatus: dashboard.shop.plan_status || "",
         statusText: "Plans",
         title: "Plans & Pricing",
         subtitle: "Compare plans and upgrade to unlock more features.",
@@ -3893,7 +3956,7 @@ app.get("/plans", requireShopSession, async (req, res) => {
         ${plans.map(renderPlanCard).join("")}
       </div>
       <div style="margin-top:24px;text-align:center;font-size:13px;color:#9ca3af;">
-        All plans include a 14-day free trial. Cancel anytime through Shopify billing.
+        All plans include a 14-day free trial. <a href="https://admin.shopify.com/store/${shop.replace('.myshopify.com', '')}/settings/apps" target="_blank" style="color:#6b7280;">Manage your subscription in Shopify billing →</a>
       </div>
     `;
 
@@ -3906,6 +3969,7 @@ app.get("/plans", requireShopSession, async (req, res) => {
 app.get("/billing/upgrade", requireShopSession, async (req, res) => {
   try {
     const shop = sanitizeShop(req.query.shop);
+    const host = String(req.query.host || "");
     if (!shop) return res.status(400).send("Missing or invalid shop.");
     const planName = ['growth', 'pro'].includes(req.query.plan) ? req.query.plan : 'pro';
 
@@ -3925,6 +3989,17 @@ app.get("/billing/upgrade", requireShopSession, async (req, res) => {
       if (expiresAt <= new Date(Date.now() + 5 * 60 * 1000)) {
         accessToken = await refreshShopToken(shop);
       }
+    }
+
+    // Skip creating a duplicate if the shop already has an active subscription for this plan.
+    const targetSubName = planName === 'growth' ? 'PriceGuard Growth' : 'PriceGuard Pro';
+    try {
+      const activeSub = await getActiveSubscription(shop, accessToken);
+      if (activeSub && activeSub.status === 'ACTIVE' && activeSub.name === targetSubName) {
+        return res.redirect(getEmbeddedAppUrl(shop, host, '/'));
+      }
+    } catch (subErr) {
+      console.log('[BILLING] active subscription check failed, proceeding:', subErr.message);
     }
 
     const appUrl = process.env.APP_URL || "https://priceguard.sample-guard.com";
@@ -3986,6 +4061,7 @@ app.get("/settings", requireShopSession, async (req, res) => {
         shop,
         host,
         planName: dashboard.shop.plan_name || "free",
+        planStatus: dashboard.shop.plan_status || "",
         statusText: "Settings",
         title: "Settings",
         subtitle: "Manage your PriceGuard subscription and support options.",
@@ -4022,7 +4098,7 @@ app.get("/settings", requireShopSession, async (req, res) => {
               <a class="btn primary" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro">Upgrade to Pro — $19.99/mo</a>
               <a class="btn" href="${getEmbeddedAppUrl(shop, host, '/plans')}">See all plans →</a>` : ''}
               ${dashboard.shop.plan_name === 'pro' ? `
-              <span class="muted" style="font-size:13px;">You're on the Pro plan. To cancel or downgrade, manage your subscription in <a href="https://accounts.shopify.com" target="_blank" style="color:#0b1f55;">Shopify billing</a>.</span>` : ''}
+              <span class="muted" style="font-size:13px;">You're on the Pro plan. To cancel or downgrade, manage your subscription in <a href="https://admin.shopify.com/store/${shop.replace('.myshopify.com', '')}/settings/apps" target="_blank" style="color:#0b1f55;">Shopify billing</a>.</span>` : ''}
             </div>
           </div>
 
@@ -4300,6 +4376,7 @@ app.get('/support-embedded', requireShopSession, async (req, res) => {
       ${renderBrandHero({
         shop, host,
         planName: dashboard.shop.plan_name || 'free',
+        planStatus: dashboard.shop.plan_status || '',
         statusText: 'Support',
         title: 'Support',
         subtitle: 'Get help with PriceGuard.',
