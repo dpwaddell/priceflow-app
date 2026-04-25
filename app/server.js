@@ -539,6 +539,14 @@ function getPlanLimits(planName) {
   }
 }
 
+function capitalisePlan(planName) {
+  switch ((planName || '').toLowerCase()) {
+    case 'growth': return 'Growth';
+    case 'pro':    return 'Pro';
+    default:       return 'Free';
+  }
+}
+
 function renderLayout({ shop, host, apiKey, title, content }) {
   const apiKeySafe = escapeHtml(apiKey || "");
 
@@ -1065,7 +1073,7 @@ function renderLayout({ shop, host, apiKey, title, content }) {
       }
     </script>
     <div style="margin-top:32px;padding:16px 0 8px;border-top:1px solid #e5e7eb;text-align:center;font-size:13px;color:#9ca3af;">
-      PriceGuard &middot;
+      &copy; ${new Date().getFullYear()} PriceGuard &middot;
       <a href="/privacy" target="_blank" style="color:#9ca3af;text-decoration:none;">Privacy Policy</a> &middot;
       <a href="/terms" target="_blank" style="color:#9ca3af;text-decoration:none;">Terms of Service</a> &middot;
       <a href="https://priceguard.sample-guard.com/support" target="_blank" style="color:#9ca3af;text-decoration:none;">Support</a>
@@ -1122,6 +1130,21 @@ function renderBrandHero(opts) {
     '<img src="/assets/priceguard-logo.png?v=4" alt="PriceGuard logo" onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'flex\';" />' +
     '<div class="brand-logo-fallback" style="display:none;">PG</div>';
 
+  const st = statusText.toLowerCase();
+  let pillBg, pillColor, pillDot;
+  if (st === 'active' || st === 'price active') {
+    pillBg = '#f3faee'; pillColor = '#2f6f2f'; pillDot = '#72b043';
+  } else if (st === 'manual setup' || st === 'setup') {
+    pillBg = '#fef3c7'; pillColor = '#92400e'; pillDot = '#d97706';
+  } else if (st === 'validation' || st === 'preview' || st === 'pricing preview') {
+    pillBg = '#eff6ff'; pillColor = '#1e40af'; pillDot = '#3b82f6';
+  } else {
+    pillBg = '#f3f4f6'; pillColor = '#374151'; pillDot = '#9ca3af';
+  }
+  const pillStyle = `display:inline-flex;align-items:center;gap:8px;border-radius:999px;padding:8px 12px;font-size:12px;font-weight:700;background:${pillBg};color:${pillColor};border:1px solid ${pillDot}33;`;
+  const dotStyle = `width:8px;height:8px;border-radius:999px;background:${pillDot};flex-shrink:0;`;
+  const pillHtml = `<span style="${pillStyle}"><span style="${dotStyle}"></span>${escapeHtml(statusText)}</span>`;
+
   return ''
     + '<div class="brand-hero">'
     +   '<div class="brand-hero-top">'
@@ -1133,9 +1156,9 @@ function renderBrandHero(opts) {
     +       '</div>'
     +     '</div>'
     +     '<div class="brand-meta">'
-    +       '<span class="status-pill">' + escapeHtml(statusText) + '</span>'
+    +       pillHtml
     +       '<span class="pill">Shop: ' + escapeHtml(shop) + '</span>'
-    +       '<span class="pill">Plan: ' + escapeHtml(planName) + '</span>'
+    +       '<span class="pill">Plan: ' + escapeHtml(capitalisePlan(planName)) + '</span>'
     +     '</div>'
     +   '</div>'
     +   '<div class="brand-nav">' + renderNav(shop, host, active) + '</div>'
@@ -1148,6 +1171,7 @@ function renderNav(shop, host, active) {
   const assignmentsUrl = getEmbeddedAppUrl(shop, host, "/customer-assignments");
   const previewUrl = getEmbeddedAppUrl(shop, host, "/pricing-preview");
   const pricesUrl = getEmbeddedAppUrl(shop, host, "/customer-product-prices");
+  const plansUrl = getEmbeddedAppUrl(shop, host, "/plans");
   return `
     <div class="nav" style="overflow-x:auto;flex-wrap:nowrap;white-space:nowrap;">
       <button type="button" class="btn ${active === "dashboard" ? "primary" : ""}" onclick="window.location.href='${dashUrl}'">Dashboard</button>
@@ -1155,7 +1179,8 @@ function renderNav(shop, host, active) {
       <button type="button" class="btn ${active === "assignments" ? "primary" : ""}" onclick="window.location.href='${assignmentsUrl}'">Customer Assignments</button>
       <button type="button" class="btn ${active === "prices" ? "primary" : ""}" onclick="window.location.href='${pricesUrl}'">Price Overrides</button>
       <button type="button" class="btn ${active === "preview" ? "primary" : ""}" onclick="window.location.href='${previewUrl}'">Pricing Preview</button>
-      <a class="btn" href="${getEmbeddedAppUrl(shop, host, '/support')}" onclick="event.preventDefault(); window.open('https://priceguard.sample-guard.com/support','_blank')" style="text-decoration:none;">Support</a>
+      <button type="button" class="btn ${active === "plans" ? "primary" : ""}" onclick="window.location.href='${plansUrl}'">Plans &amp; Pricing</button>
+      <button type="button" class="btn ${active === "support" ? "primary" : ""}" onclick="window.location.href='${getEmbeddedAppUrl(shop, host, '/support-embedded')}'">Support</button>
     </div>
   `;
 }
@@ -1228,19 +1253,23 @@ function renderDashboard({ shop, apiKey, dashboard, host }) {
         ${dashboard.shop.plan_name === 'free' ? `<div style="padding:16px 18px;background:linear-gradient(135deg,#0b1f55,#1a3a8a);border-radius:18px;color:#fff;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
           <div>
             <div style="font-weight:700;font-size:15px;margin-bottom:4px;">You're on the Free plan — 1 tier, 1 customer.</div>
-            <div style="font-size:13px;opacity:0.85;">Upgrade to Growth ($9/mo) for 3 tiers, 20 customers, and sitewide pricing — or Pro ($19/mo) for unlimited.</div>
+            <div style="font-size:13px;opacity:0.85;">Upgrade to Growth ($9.99/mo) for 3 tiers, 20 customers, and sitewide pricing — or Pro ($19.99/mo) for unlimited.</div>
           </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <a href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=growth" style="background:rgba(255,255,255,0.15);color:#fff;font-weight:700;padding:10px 16px;border-radius:12px;text-decoration:none;font-size:14px;white-space:nowrap;border:1px solid rgba(255,255,255,0.3);">Growth — $9/mo</a>
-            <a href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro" style="background:#fff;color:#0b1f55;font-weight:700;padding:10px 16px;border-radius:12px;text-decoration:none;font-size:14px;white-space:nowrap;">Pro — $19/mo</a>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            <a href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=growth" style="background:rgba(255,255,255,0.15);color:#fff;font-weight:700;padding:10px 16px;border-radius:12px;text-decoration:none;font-size:14px;white-space:nowrap;border:1px solid rgba(255,255,255,0.3);">Growth — $9.99/mo</a>
+            <a href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro" style="background:#fff;color:#0b1f55;font-weight:700;padding:10px 16px;border-radius:12px;text-decoration:none;font-size:14px;white-space:nowrap;">Pro — $19.99/mo</a>
+            <a href="${getEmbeddedAppUrl(shop, host, '/plans')}" style="color:rgba(255,255,255,0.75);font-size:13px;text-decoration:none;white-space:nowrap;">See all plans →</a>
           </div>
         </div>` : ''}
         ${dashboard.shop.plan_name === 'growth' ? `<div style="padding:16px 18px;background:linear-gradient(135deg,#0b4f6c,#0b7da0);border-radius:18px;color:#fff;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
           <div>
             <div style="font-weight:700;font-size:15px;margin-bottom:4px;">You're on the Growth plan — 3 tiers, 20 customers.</div>
-            <div style="font-size:13px;opacity:0.85;">Upgrade to Pro ($19/mo) for unlimited tiers, CSV import, and scheduled pricing.</div>
+            <div style="font-size:13px;opacity:0.85;">Upgrade to Pro ($19.99/mo) for unlimited tiers, CSV import, and scheduled pricing.</div>
           </div>
-          <a href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro" style="background:#fff;color:#0b4f6c;font-weight:700;padding:10px 16px;border-radius:12px;text-decoration:none;font-size:14px;white-space:nowrap;">Upgrade to Pro — $19/mo</a>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            <a href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro" style="background:#fff;color:#0b4f6c;font-weight:700;padding:10px 16px;border-radius:12px;text-decoration:none;font-size:14px;white-space:nowrap;">Upgrade to Pro — $19.99/mo</a>
+            <a href="${getEmbeddedAppUrl(shop, host, '/plans')}" style="color:rgba(255,255,255,0.75);font-size:13px;text-decoration:none;white-space:nowrap;">See all plans →</a>
+          </div>
         </div>` : ''}
         <div class="card">
           <h2>Onboarding checklist</h2>
@@ -1268,28 +1297,20 @@ function renderDashboard({ shop, apiKey, dashboard, host }) {
 
         <div class="card">
           <h2>How PriceGuard Works</h2>
-          <div class="list">
-            <div class="list-row">
-              <div><strong>1. Create a Pricing Tier</strong></div>
-              <div class="muted">Define a tier (e.g. Gold, Trade, VIP) with a percentage or fixed discount and optional date range.</div>
-            </div>
-            <div class="list-row">
-              <div><strong>2. Assign Customers</strong></div>
-              <div class="muted">Link a customer's email address to a tier. Free plan supports 1 customer; Premium is unlimited.</div>
-            </div>
-            <div class="list-row">
-              <div><strong>3. Optional: Add Product Prices</strong></div>
-              <div class="muted">Set exact fixed prices on specific products for a customer, overriding their tier discount.</div>
-            </div>
-            <div class="list-row">
-              <div><strong>4. Enable the Theme Extension</strong></div>
-              <div class="muted">Activate the PriceGuard block in your Shopify theme to display trade prices on product pages.</div>
-            </div>
-            <div class="list-row">
-              <div><strong>5. Test with a Customer Account</strong></div>
-              <div class="muted">Use the Pricing Preview tab to check prices before going live, then confirm in the storefront.</div>
-            </div>
-          </div>
+          ${[
+            ['Create a Pricing Tier', 'Define a tier (e.g. Gold, Trade, VIP) with a percentage or fixed discount and optional date range.'],
+            ['Assign Customers', 'Link a customer\'s email address to a tier. Free plan supports 1 customer; Growth supports 20; Pro is unlimited.'],
+            ['Optional: Add Product Prices', 'Set exact fixed prices on specific products for a customer, overriding their tier discount.'],
+            ['Enable the Theme Extension', 'Activate the PriceGuard block in your Shopify theme to display trade prices on product pages.'],
+            ['Test with a Customer Account', 'Use the Pricing Preview tab to check prices before going live, then confirm in the storefront.'],
+          ].map(([title, desc], i, arr) => `
+            <div style="display:flex;gap:14px;align-items:flex-start;padding:14px 0;${i < arr.length - 1 ? 'border-bottom:1px solid #f1f5f9;' : ''}">
+              <div style="flex-shrink:0;width:28px;height:28px;border-radius:999px;background:#0b1f55;color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;">${i + 1}</div>
+              <div>
+                <div style="font-weight:700;color:#111827;font-size:14px;margin-bottom:3px;">${escapeHtml(title)}</div>
+                <div style="font-size:13px;color:#6b7280;">${escapeHtml(desc)}</div>
+              </div>
+            </div>`).join('')}
           <div style="margin-top:14px;font-size:13px;color:#9ca3af;">
             Questions? Email <a href="mailto:support@sample-guard.com" style="color:#0b1f55;">support@sample-guard.com</a>
           </div>
@@ -1297,30 +1318,19 @@ function renderDashboard({ shop, apiKey, dashboard, host }) {
 
         <div class="card">
           <h2>Enable Theme Extension</h2>
-          <div class="list">
-            <div class="list-row">
-              <div><strong>Step 1</strong></div>
-              <div class="muted">In your Shopify admin, go to <strong>Online Store → Themes</strong></div>
-            </div>
-            <div class="list-row">
-              <div><strong>Step 2</strong></div>
-              <div class="muted">Click <strong>Customize</strong> on your active theme</div>
-            </div>
-            <div class="list-row">
-              <div><strong>Step 3</strong></div>
-              <div class="muted">In the theme editor, click <strong>Add section</strong> or <strong>Add block</strong></div>
-            </div>
-            <div class="list-row">
-              <div><strong>Step 4</strong></div>
-              <div class="muted">Search for <strong>PriceGuard</strong> and add the block to your product page template</div>
-            </div>
-            <div class="list-row">
-              <div><strong>Step 5</strong></div>
-              <div class="muted">For sitewide pricing (Growth/Pro), also enable the PriceGuard embed in <strong>Theme Settings → App Embeds</strong></div>
-            </div>
-          </div>
-          <div style="margin-top:14px;">
-            <a href="https://${escapeHtml(shop)}/admin/themes/current/editor" target="_blank" style="color:#0b1f55;font-weight:700;font-size:13px;">Open Theme Editor →</a>
+          ${[
+            ['In your Shopify admin, go to <strong>Online Store → Themes</strong>', false],
+            ['Click <strong>Customize</strong> on your active theme', false],
+            ['In the theme editor, click <strong>Add section</strong> or <strong>Add block</strong>', false],
+            ['Search for <strong>PriceGuard</strong> and add the block to your product page template', false],
+            ['For sitewide pricing (Growth/Pro), also enable the PriceGuard embed in <strong>Theme Settings → App Embeds</strong>', false],
+          ].map(([desc, _], i, arr) => `
+            <div style="display:flex;gap:14px;align-items:flex-start;padding:14px 0;${i < arr.length - 1 ? 'border-bottom:1px solid #f1f5f9;' : ''}">
+              <div style="flex-shrink:0;width:28px;height:28px;border-radius:999px;background:#0b1f55;color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;">${i + 1}</div>
+              <div style="font-size:13px;color:#4b5563;padding-top:5px;">${desc}</div>
+            </div>`).join('')}
+          <div style="margin-top:16px;">
+            <a href="https://${escapeHtml(shop)}/admin/themes/current/editor" target="_blank" class="btn primary small" style="text-decoration:none;">Open Theme Editor →</a>
           </div>
         </div>
       </div>
@@ -1410,13 +1420,14 @@ function renderPricingTiersPage({ shop, host, apiKey, dashboard, tiers, tierCoun
                 ? 'You have reached the Growth plan limit of 3 tiers. Upgrade to Pro for unlimited tiers.'
                 : 'You have reached the Free plan limit of 1 tier. Upgrade to Growth (3 tiers) or Pro (unlimited).';
               const upgradeActions = isGrowth
-                ? `<a class="btn primary" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro">Upgrade to Pro — $19/mo</a>`
-                : `<a class="btn primary" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=growth">Growth — $9/mo</a>
-                   <a class="btn" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro">Pro — $19/mo</a>`;
+                ? `<a class="btn primary" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro">Upgrade to Pro — $19.99/mo</a>`
+                : `<a class="btn primary" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=growth">Growth — $9.99/mo</a>
+                   <a class="btn" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro">Pro — $19.99/mo</a>`;
               return `<h2>Create pricing tier ${usageBadge}</h2>
                 <div class="empty" style="margin-bottom:12px;">${upgradeMsg}</div>
                 <div class="actions">
                   ${upgradeActions}
+                  <a class="btn" href="${getEmbeddedAppUrl(shop, host, '/plans')}">See all plans →</a>
                   <a class="btn" href="${getEmbeddedAppUrl(shop, host, '/')}">Back to dashboard</a>
                 </div>`;
             }
@@ -1452,7 +1463,7 @@ function renderPricingTiersPage({ shop, host, apiKey, dashboard, tiers, tierCoun
                     <input id="ends_at" name="ends_at" type="datetime-local" />
                   </div>` : `
                   <div class="field full">
-                    <div style="font-size:13px;color:#6b7280;padding:6px 0;">Scheduled pricing requires the <a href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro" style="color:#0b1f55;">Pro plan</a>.</div>
+                    <div style="font-size:13px;color:#1e40af;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px 14px;">Scheduled pricing is a <strong>Pro plan</strong> feature. <a href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro" style="color:#1e40af;font-weight:700;">Upgrade to Pro →</a></div>
                   </div>`}
                   <div class="field full">
                     <label for="is_enabled">Status</label>
@@ -1565,9 +1576,7 @@ function renderCustomerAssignmentsPage({ shop, host, apiKey, dashboard, tiers, a
       <div class="stack">
         <div class="card">
           <h2>Assign customer to tier ${customerUsageBadge}</h2>
-          <div class="actions" style="margin-bottom:12px;">
-            <div class="empty" style="margin-bottom:12px;">Shopify customer search is not enabled in this version. Enter the customer email and optional Shopify customer ID manually below.</div>
-          </div>
+          <div class="muted" style="margin-bottom:14px;font-size:13px;">Enter the customer's email address to assign them to a pricing tier.</div>
           <form method="post" action="/customer-assignments?shop=${encodeURIComponent(shop)}${host ? `&host=${encodeURIComponent(host)}` : ""}">
             <div class="form-grid">
               <div class="field full">
@@ -1598,7 +1607,7 @@ function renderCustomerAssignmentsPage({ shop, host, apiKey, dashboard, tiers, a
                 <input id="ends_at" name="ends_at" type="datetime-local" />
               </div>` : `
               <div class="field full">
-                <div style="font-size:13px;color:#6b7280;padding:6px 0;">Scheduled assignments require the <a href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro" style="color:#0b1f55;">Pro plan</a>.</div>
+                <div style="font-size:13px;color:#1e40af;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px 14px;">Scheduled assignments are a <strong>Pro plan</strong> feature. <a href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro" style="color:#1e40af;font-weight:700;">Upgrade to Pro →</a></div>
               </div>`}
 
               <div class="field full">
@@ -2161,6 +2170,29 @@ app.get('/customer-product-prices', requireShopSession, async (req, res) => {
     const rows = rowsQ.rows;
     const baseUrl = getEmbeddedAppUrl(shop, host, '/customer-product-prices');
 
+    const productTitleMap = {};
+    const uniqueProductIds = [...new Set(rows.map(r => r.product_id).filter(Boolean))];
+    if (uniqueProductIds.length > 0) {
+      try {
+        const shopRow = await getPriceGuardShopByDomain(shop);
+        if (shopRow && shopRow.access_token) {
+          const aliasFields = uniqueProductIds.map(id =>
+            `p${id}: product(id: "gid://shopify/Product/${id}") { title }`
+          ).join('\n');
+          const gqlData = await priceGuardShopifyAdminGraphQL(
+            shop, shopRow.access_token,
+            `#graphql\nquery PageProductTitles {\n${aliasFields}\n}`, {}
+          );
+          for (const id of uniqueProductIds) {
+            const p = gqlData[`p${id}`];
+            if (p && p.title) productTitleMap[id] = p.title;
+          }
+        }
+      } catch (e) {
+        console.log('[PG] page product title fetch failed:', e.message);
+      }
+    }
+
     let productSearchResults = [];
     if (pq) {
       try {
@@ -2192,10 +2224,13 @@ app.get('/customer-product-prices', requireShopSession, async (req, res) => {
 
     const tableRows = rows.length === 0
       ? `<tr><td colspan="8" class="muted" style="text-align:center;padding:20px;">No rows yet.</td></tr>`
-      : rows.map(r => `
+      : rows.map(r => {
+          const rawTitle = (r.product_id && productTitleMap[r.product_id]) || r.product_id || '—';
+          const productDisplay = rawTitle.length > 30 ? rawTitle.slice(0, 30) + '…' : rawTitle;
+          return `
           <tr>
             <td>${escapeHtml(r.customer_email)}</td>
-            <td>${escapeHtml(r.product_id || '—')}</td>
+            <td title="${escapeHtml(rawTitle)}">${escapeHtml(productDisplay)}</td>
             <td>${escapeHtml(r.sku || '—')}</td>
             <td><strong>£${Number(r.fixed_price).toFixed(2)}</strong></td>
             <td>${escapeHtml(r.currency || 'GBP')}</td>
@@ -2206,7 +2241,8 @@ app.get('/customer-product-prices', requireShopSession, async (req, res) => {
                 <button class="btn small danger" type="submit">Delete</button>
               </form>
             </td>
-          </tr>`).join('');
+          </tr>`;
+        }).join('');
 
     const pagination = totalPages > 1
       ? `<div style="margin-top:12px;display:flex;gap:8px;align-items:center;">
@@ -2256,7 +2292,7 @@ app.get('/customer-product-prices', requireShopSession, async (req, res) => {
               });
             </script>
             <table>
-              <thead><tr><th>Email</th><th>Product ID</th><th>SKU</th><th>Fixed Price</th><th>Currency</th><th>From</th><th>To</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Email</th><th>Product</th><th>SKU</th><th>Fixed Price</th><th>Currency</th><th>From</th><th>To</th><th>Actions</th></tr></thead>
               <tbody>${tableRows}</tbody>
             </table>
             ${pagination}
@@ -2348,8 +2384,9 @@ app.get('/customer-product-prices', requireShopSession, async (req, res) => {
             <h2>Growth / Pro feature</h2>
             <div class="muted">Customer product price overrides require the Growth or Pro plan.</div>
             <div class="actions" style="margin-top:12px;">
-              <a class="btn primary" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=growth">Growth — $9/mo</a>
-              <a class="btn" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro">Pro — $19/mo</a>
+              <a class="btn primary" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=growth">Growth — $9.99/mo</a>
+              <a class="btn" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro">Pro — $19.99/mo</a>
+              <a class="btn" href="${getEmbeddedAppUrl(shop, host, '/plans')}">See all plans →</a>
             </div>
           </div>`}
           <div class="card">
@@ -3719,6 +3756,153 @@ app.get("/billing/callback", async (req, res) => {
   }
 });
 
+app.get("/plans", requireShopSession, async (req, res) => {
+  try {
+    const shop = sanitizeShop(req.query.shop);
+    const host = String(req.query.host || "");
+    if (!shop) return res.status(400).send("Missing or invalid shop.");
+
+    const dashboard = await getDashboardData(shop);
+    if (!dashboard) return res.status(404).send("Shop not found.");
+
+    const currentPlan = dashboard.shop.plan_name || "free";
+
+    const plans = [
+      {
+        id: "free",
+        name: "Free",
+        price: "$0",
+        period: "",
+        headerBg: "#6b7280",
+        features: [
+          { label: "Pricing tiers", value: "1" },
+          { label: "Customer assignments", value: "1" },
+          { label: "Product page pricing", available: true },
+          { label: "Sitewide pricing", available: false },
+          { label: "Tag-based tier pricing", available: false },
+          { label: "SKU price overrides", available: false },
+          { label: "CSV import & export", available: false },
+          { label: "Scheduled pricing", available: false },
+          { label: "Email support", available: false },
+          { label: "Priority support", available: false },
+        ]
+      },
+      {
+        id: "growth",
+        name: "Growth",
+        price: "$9.99",
+        period: "/mo",
+        headerBg: "#0b4f6c",
+        features: [
+          { label: "Pricing tiers", value: "3" },
+          { label: "Customer assignments", value: "20" },
+          { label: "Product page pricing", available: true },
+          { label: "Sitewide pricing", available: true },
+          { label: "Tag-based tier pricing", available: true },
+          { label: "SKU price overrides", available: true },
+          { label: "CSV import & export", available: false },
+          { label: "Scheduled pricing", available: false },
+          { label: "Email support", available: true },
+          { label: "Priority support", available: false },
+        ]
+      },
+      {
+        id: "pro",
+        name: "Pro",
+        price: "$19.99",
+        period: "/mo",
+        headerBg: "#0b1f55",
+        features: [
+          { label: "Pricing tiers", value: "Unlimited" },
+          { label: "Customer assignments", value: "Unlimited" },
+          { label: "Product page pricing", available: true },
+          { label: "Sitewide pricing", available: true },
+          { label: "Tag-based tier pricing", available: true },
+          { label: "SKU price overrides", available: true },
+          { label: "CSV import & export", available: true },
+          { label: "Scheduled pricing", available: true },
+          { label: "Email support", available: true },
+          { label: "Priority support", available: true },
+        ]
+      }
+    ];
+
+    const planOrder = { free: 0, growth: 1, pro: 2 };
+    const currentPlanIndex = planOrder[currentPlan] ?? 0;
+
+    function renderPlanCard(plan) {
+      const isCurrent = plan.id === currentPlan;
+      const isLower = (planOrder[plan.id] ?? 0) < currentPlanIndex;
+      const borderStyle = isCurrent
+        ? "border:2px solid #0b4f6c;box-shadow:0 4px 20px rgba(11,79,108,0.18);"
+        : "border:2px solid #e5e7eb;";
+
+      const featuresHtml = plan.features.map(f => {
+        if (f.value !== undefined) {
+          return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f1f5f9;font-size:14px;">
+            <span style="color:#374151;">${escapeHtml(f.label)}</span>
+            <strong style="color:#111827;">${escapeHtml(f.value)}</strong>
+          </div>`;
+        }
+        if (f.available) {
+          return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f1f5f9;font-size:14px;">
+            <span style="color:#374151;">${escapeHtml(f.label)}</span>
+            <span style="color:#16a34a;font-weight:700;">✓</span>
+          </div>`;
+        }
+        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f1f5f9;font-size:14px;opacity:0.4;">
+          <span style="color:#374151;">🔒 ${escapeHtml(f.label)}</span>
+          <span style="color:#9ca3af;">—</span>
+        </div>`;
+      }).join("");
+
+      let ctaHtml = "";
+      if (isCurrent) {
+        ctaHtml = `<div style="text-align:center;padding:12px;background:#f0fdf4;border-radius:10px;color:#16a34a;font-weight:700;font-size:14px;">Your current plan</div>`;
+      } else if (!isLower) {
+        ctaHtml = `<a href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=${plan.id}" style="display:block;text-align:center;padding:12px;background:${plan.headerBg};color:#fff;border-radius:10px;font-weight:700;font-size:14px;text-decoration:none;">Upgrade to ${escapeHtml(plan.name)}</a>`;
+      }
+
+      return `<div style="flex:1;min-width:240px;max-width:320px;border-radius:16px;overflow:hidden;${borderStyle}background:#fff;">
+        <div style="background:${plan.headerBg};padding:24px 20px;position:relative;">
+          ${isCurrent ? `<div style="position:absolute;top:12px;right:12px;background:rgba(255,255,255,0.2);color:#fff;font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;border:1px solid rgba(255,255,255,0.4);">Current plan</div>` : ""}
+          <div style="color:#fff;font-size:22px;font-weight:800;">${escapeHtml(plan.name)}</div>
+          <div style="color:rgba(255,255,255,0.9);margin-top:8px;">
+            <span style="font-size:32px;font-weight:800;">${escapeHtml(plan.price)}</span>
+            <span style="font-size:14px;opacity:0.8;">${escapeHtml(plan.period)}</span>
+          </div>
+        </div>
+        <div style="padding:16px 20px;">
+          ${featuresHtml}
+          <div style="margin-top:20px;">${ctaHtml}</div>
+        </div>
+      </div>`;
+    }
+
+    const content = `
+      ${renderBrandHero({
+        shop,
+        host,
+        planName: currentPlan,
+        statusText: "Plans",
+        title: "Plans & Pricing",
+        subtitle: "Compare plans and upgrade to unlock more features.",
+        active: "plans"
+      })}
+      <div style="display:flex;gap:20px;flex-wrap:wrap;justify-content:center;margin-top:8px;">
+        ${plans.map(renderPlanCard).join("")}
+      </div>
+      <div style="margin-top:24px;text-align:center;font-size:13px;color:#9ca3af;">
+        All plans include a 14-day free trial. Cancel anytime through Shopify billing.
+      </div>
+    `;
+
+    return res.send(renderLayout({ shop, host, apiKey: process.env.SHOPIFY_API_KEY || "", title: "PriceGuard | Plans & Pricing", content }));
+  } catch (e) {
+    return res.status(500).send(`Plans page failed: ${escapeHtml(e.message)}`);
+  }
+});
+
 app.get("/billing/upgrade", requireShopSession, async (req, res) => {
   try {
     const shop = sanitizeShop(req.query.shop);
@@ -3791,7 +3975,7 @@ app.get("/settings", requireShopSession, async (req, res) => {
     const dashboard = await getDashboardData(shop);
     if (!dashboard) return res.status(404).send("Shop not found.");
 
-    const planName = escapeHtml(dashboard.shop.plan_name || "free");
+    const planName = escapeHtml(capitalisePlan(dashboard.shop.plan_name));
     const planStatus = escapeHtml(dashboard.shop.plan_status || "inactive");
     const installedAt = dashboard.shop.installed_at
       ? new Date(dashboard.shop.installed_at).toLocaleDateString("en-GB")
@@ -3831,10 +4015,12 @@ app.get("/settings", requireShopSession, async (req, res) => {
             </div>
             <div class="actions" style="margin-top:16px;">
               ${dashboard.shop.plan_name === 'free' ? `
-              <a class="btn primary" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=growth">Growth — $9/mo</a>
-              <a class="btn" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro">Pro — $19/mo</a>` : ''}
+              <a class="btn primary" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=growth">Growth — $9.99/mo</a>
+              <a class="btn" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro">Pro — $19.99/mo</a>
+              <a class="btn" href="${getEmbeddedAppUrl(shop, host, '/plans')}">See all plans →</a>` : ''}
               ${dashboard.shop.plan_name === 'growth' ? `
-              <a class="btn primary" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro">Upgrade to Pro — $19/mo</a>` : ''}
+              <a class="btn primary" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro">Upgrade to Pro — $19.99/mo</a>
+              <a class="btn" href="${getEmbeddedAppUrl(shop, host, '/plans')}">See all plans →</a>` : ''}
               ${dashboard.shop.plan_name === 'pro' ? `
               <span class="muted" style="font-size:13px;">You're on the Pro plan. To cancel or downgrade, manage your subscription in <a href="https://accounts.shopify.com" target="_blank" style="color:#0b1f55;">Shopify billing</a>.</span>` : ''}
             </div>
@@ -4094,6 +4280,67 @@ ${LEGAL_PAGE_STYLE}
 </div>
 </body>
 </html>`);
+});
+
+app.get('/support-embedded', requireShopSession, async (req, res) => {
+  try {
+    const shop = sanitizeShop(req.query.shop);
+    const host = String(req.query.host || '');
+    if (!shop) return res.status(400).send('Missing or invalid shop.');
+    const dashboard = await getDashboardData(shop);
+    if (!dashboard) return res.status(404).send('Shop not found.');
+
+    const faqItem = (q, a) => `
+      <div style="padding:14px 0;border-bottom:1px solid #f1f5f9;">
+        <div style="font-weight:700;color:#111827;margin-bottom:6px;">${q}</div>
+        <div style="font-size:14px;color:#4b5563;">${a}</div>
+      </div>`;
+
+    const content = `
+      ${renderBrandHero({
+        shop, host,
+        planName: dashboard.shop.plan_name || 'free',
+        statusText: 'Support',
+        title: 'Support',
+        subtitle: 'Get help with PriceGuard.',
+        active: 'support'
+      })}
+      <div class="grid">
+        <div class="stack">
+          <div class="card">
+            <h2>Contact Us</h2>
+            <div class="list">
+              <div class="list-row">
+                <div class="muted">Email</div>
+                <div><a href="mailto:support@sample-guard.com" style="color:#0b1f55;">support@sample-guard.com</a></div>
+              </div>
+            </div>
+            <div class="muted" style="margin-top:10px;font-size:13px;">We aim to respond to all support requests within one business day.</div>
+          </div>
+        </div>
+
+        <div class="stack">
+          <div class="card">
+            <h2>Common Questions</h2>
+            ${faqItem('How do I create a pricing tier?',
+              'Go to the Pricing Tiers page and fill in the tier name, discount type (percentage or fixed amount), and an optional date range.')}
+            ${faqItem('How do I assign a customer?',
+              'Go to Customer Assignments and enter the customer\'s email address. Free plan supports 1 customer; Growth supports 20; Pro is unlimited.')}
+            ${faqItem('Prices aren\'t showing on my storefront.',
+              'Make sure the PriceGuard theme extension is enabled in your Shopify theme editor. Navigate to Online Store → Themes → Customize, and add the PriceGuard block to your product page template.')}
+            ${faqItem('How do I upgrade my plan?',
+              'Click <strong>Plans &amp; Pricing</strong> in the nav above, or go to Settings. Growth ($9.99/mo) adds sitewide pricing, tag-based tiers, and SKU overrides. Pro ($19.99/mo) adds CSV import, scheduled pricing, and priority support.')}
+            ${faqItem('How does billing work?',
+              'Billing is handled by Shopify. Charges appear on your Shopify invoice. A 14-day free trial applies to new Growth and Pro subscriptions. You may cancel at any time from your Shopify billing settings.')}
+          </div>
+        </div>
+      </div>
+    `;
+
+    return res.send(renderLayout({ shop, host, apiKey: process.env.SHOPIFY_API_KEY || '', title: 'PriceGuard | Support', content }));
+  } catch (e) {
+    return res.status(500).send(`Support page failed: ${escapeHtml(e.message)}`);
+  }
 });
 
 app.get('/support', (req, res) => {
