@@ -1065,10 +1065,10 @@ function renderLayout({ shop, host, apiKey, title, content }) {
       }
     </script>
     <div style="margin-top:32px;padding:16px 0 8px;border-top:1px solid #e5e7eb;text-align:center;font-size:13px;color:#9ca3af;">
-      PriceGuard v${APP_VERSION} &middot;
+      PriceGuard &middot;
       <a href="/privacy" target="_blank" style="color:#9ca3af;text-decoration:none;">Privacy Policy</a> &middot;
       <a href="/terms" target="_blank" style="color:#9ca3af;text-decoration:none;">Terms of Service</a> &middot;
-      <a href="mailto:support@sample-guard.com" style="color:#9ca3af;text-decoration:none;">Support</a>
+      <a href="https://priceguard.sample-guard.com/support" target="_blank" style="color:#9ca3af;text-decoration:none;">Support</a>
     </div>
       </div>
   </body>
