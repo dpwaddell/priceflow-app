@@ -13,6 +13,11 @@ const {
 
 const APP_VERSION = require("./package.json").version;
 
+const PLAN_PRICES = {
+  growth: { monthly: 9.99,  display: '$9.99'  },
+  pro:    { monthly: 19.99, display: '$19.99' }
+};
+
 const app = express();
 const port = process.env.PORT || 3100;
 
@@ -89,8 +94,8 @@ async function shopifyAdminGraphQL(shopDomain, accessToken, query, variables = {
 
 async function createShopifySubscription(shopDomain, accessToken, returnUrl, planName = 'pro') {
   const PLAN_CONFIG = {
-    growth: { name: 'PriceGuard Growth', price: 9.99 },
-    pro:    { name: 'PriceGuard Pro',    price: 19.99 }
+    growth: { name: 'PriceGuard Growth', price: PLAN_PRICES.growth.monthly },
+    pro:    { name: 'PriceGuard Pro',    price: PLAN_PRICES.pro.monthly }
   };
   const plan = PLAN_CONFIG[planName] || PLAN_CONFIG.pro;
 
@@ -1261,21 +1266,21 @@ function renderDashboard({ shop, apiKey, dashboard, host }) {
         ${dashboard.shop.plan_name === 'free' ? `<div style="padding:16px 18px;background:linear-gradient(135deg,#0b1f55,#1a3a8a);border-radius:18px;color:#fff;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
           <div>
             <div style="font-weight:700;font-size:15px;margin-bottom:4px;">You're on the Free plan — 1 tier, 1 customer.</div>
-            <div style="font-size:13px;opacity:0.85;">Upgrade to Growth ($9.99/mo) for 3 tiers, 20 customers, and sitewide pricing — or Pro ($19.99/mo) for unlimited.</div>
+            <div style="font-size:13px;opacity:0.85;">Upgrade to Growth (${PLAN_PRICES.growth.display}/mo) for 3 tiers, 20 customers, and sitewide pricing — or Pro (${PLAN_PRICES.pro.display}/mo) for unlimited.</div>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-            <a href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=growth" style="background:rgba(255,255,255,0.15);color:#fff;font-weight:700;padding:10px 16px;border-radius:12px;text-decoration:none;font-size:14px;white-space:nowrap;border:1px solid rgba(255,255,255,0.3);">Growth — $9.99/mo</a>
-            <a href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro" style="background:#fff;color:#0b1f55;font-weight:700;padding:10px 16px;border-radius:12px;text-decoration:none;font-size:14px;white-space:nowrap;">Pro — $19.99/mo</a>
+            <a href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=growth" style="background:rgba(255,255,255,0.15);color:#fff;font-weight:700;padding:10px 16px;border-radius:12px;text-decoration:none;font-size:14px;white-space:nowrap;border:1px solid rgba(255,255,255,0.3);">Growth — ${PLAN_PRICES.growth.display}/mo</a>
+            <a href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro" style="background:#fff;color:#0b1f55;font-weight:700;padding:10px 16px;border-radius:12px;text-decoration:none;font-size:14px;white-space:nowrap;">Pro — ${PLAN_PRICES.pro.display}/mo</a>
             <a href="${getEmbeddedAppUrl(shop, host, '/plans')}" style="color:rgba(255,255,255,0.75);font-size:13px;text-decoration:none;white-space:nowrap;">See all plans →</a>
           </div>
         </div>` : ''}
         ${dashboard.shop.plan_name === 'growth' ? `<div style="padding:16px 18px;background:linear-gradient(135deg,#0b4f6c,#0b7da0);border-radius:18px;color:#fff;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
           <div>
             <div style="font-weight:700;font-size:15px;margin-bottom:4px;">You're on the Growth plan — 3 tiers, 20 customers.</div>
-            <div style="font-size:13px;opacity:0.85;">Upgrade to Pro ($19.99/mo) for unlimited tiers, CSV import, and scheduled pricing.</div>
+            <div style="font-size:13px;opacity:0.85;">Upgrade to Pro (${PLAN_PRICES.pro.display}/mo) for unlimited tiers, CSV import, and scheduled pricing.</div>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-            <a href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro" style="background:#fff;color:#0b4f6c;font-weight:700;padding:10px 16px;border-radius:12px;text-decoration:none;font-size:14px;white-space:nowrap;">Upgrade to Pro — $19.99/mo</a>
+            <a href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro" style="background:#fff;color:#0b4f6c;font-weight:700;padding:10px 16px;border-radius:12px;text-decoration:none;font-size:14px;white-space:nowrap;">Upgrade to Pro — ${PLAN_PRICES.pro.display}/mo</a>
             <a href="${getEmbeddedAppUrl(shop, host, '/plans')}" style="color:rgba(255,255,255,0.75);font-size:13px;text-decoration:none;white-space:nowrap;">See all plans →</a>
           </div>
         </div>` : ''}
@@ -1429,9 +1434,9 @@ function renderPricingTiersPage({ shop, host, apiKey, dashboard, tiers, tierCoun
                 ? 'You have reached the Growth plan limit of 3 tiers. Upgrade to Pro for unlimited tiers.'
                 : 'You have reached the Free plan limit of 1 tier. Upgrade to Growth (3 tiers) or Pro (unlimited).';
               const upgradeActions = isGrowth
-                ? `<a class="btn primary" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro">Upgrade to Pro — $19.99/mo</a>`
-                : `<a class="btn primary" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=growth">Growth — $9.99/mo</a>
-                   <a class="btn" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro">Pro — $19.99/mo</a>`;
+                ? `<a class="btn primary" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro">Upgrade to Pro — ${PLAN_PRICES.pro.display}/mo</a>`
+                : `<a class="btn primary" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=growth">Growth — ${PLAN_PRICES.growth.display}/mo</a>
+                   <a class="btn" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro">Pro — ${PLAN_PRICES.pro.display}/mo</a>`;
               return `<h2>Create pricing tier ${usageBadge}</h2>
                 <div class="empty" style="margin-bottom:12px;">${upgradeMsg}</div>
                 <div class="actions">
@@ -2394,8 +2399,8 @@ app.get('/customer-product-prices', requireShopSession, async (req, res) => {
             <h2>Growth / Pro feature</h2>
             <div class="muted">Customer product price overrides require the Growth or Pro plan.</div>
             <div class="actions" style="margin-top:12px;">
-              <a class="btn primary" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=growth">Growth — $9.99/mo</a>
-              <a class="btn" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro">Pro — $19.99/mo</a>
+              <a class="btn primary" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=growth">Growth — ${PLAN_PRICES.growth.display}/mo</a>
+              <a class="btn" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro">Pro — ${PLAN_PRICES.pro.display}/mo</a>
               <a class="btn" href="${getEmbeddedAppUrl(shop, host, '/plans')}">See all plans →</a>
             </div>
           </div>`}
@@ -3849,7 +3854,7 @@ app.get("/plans", requireShopSession, async (req, res) => {
       {
         id: "growth",
         name: "Growth",
-        price: "$9.99",
+        price: PLAN_PRICES.growth.display,
         period: "/mo",
         headerBg: "#0b4f6c",
         features: [
@@ -3868,7 +3873,7 @@ app.get("/plans", requireShopSession, async (req, res) => {
       {
         id: "pro",
         name: "Pro",
-        price: "$19.99",
+        price: PLAN_PRICES.pro.display,
         period: "/mo",
         headerBg: "#0b1f55",
         features: [
@@ -4091,11 +4096,11 @@ app.get("/settings", requireShopSession, async (req, res) => {
             </div>
             <div class="actions" style="margin-top:16px;">
               ${dashboard.shop.plan_name === 'free' ? `
-              <a class="btn primary" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=growth">Growth — $9.99/mo</a>
-              <a class="btn" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro">Pro — $19.99/mo</a>
+              <a class="btn primary" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=growth">Growth — ${PLAN_PRICES.growth.display}/mo</a>
+              <a class="btn" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro">Pro — ${PLAN_PRICES.pro.display}/mo</a>
               <a class="btn" href="${getEmbeddedAppUrl(shop, host, '/plans')}">See all plans →</a>` : ''}
               ${dashboard.shop.plan_name === 'growth' ? `
-              <a class="btn primary" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro">Upgrade to Pro — $19.99/mo</a>
+              <a class="btn primary" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro">Upgrade to Pro — ${PLAN_PRICES.pro.display}/mo</a>
               <a class="btn" href="${getEmbeddedAppUrl(shop, host, '/plans')}">See all plans →</a>` : ''}
               ${dashboard.shop.plan_name === 'pro' ? `
               <span class="muted" style="font-size:13px;">You're on the Pro plan. To cancel or downgrade, manage your subscription in <a href="https://admin.shopify.com/store/${shop.replace('.myshopify.com', '')}/settings/apps" target="_blank" style="color:#0b1f55;">Shopify billing</a>.</span>` : ''}
@@ -4406,7 +4411,7 @@ app.get('/support-embedded', requireShopSession, async (req, res) => {
             ${faqItem('Prices aren\'t showing on my storefront.',
               'Make sure the PriceGuard theme extension is enabled in your Shopify theme editor. Navigate to Online Store → Themes → Customize, and add the PriceGuard block to your product page template.')}
             ${faqItem('How do I upgrade my plan?',
-              'Click <strong>Plans &amp; Pricing</strong> in the nav above, or go to Settings. Growth ($9.99/mo) adds sitewide pricing, tag-based tiers, and SKU overrides. Pro ($19.99/mo) adds CSV import, scheduled pricing, and priority support.')}
+              'Click <strong>Plans &amp; Pricing</strong> in the nav above, or go to Settings. Growth (${PLAN_PRICES.growth.display}/mo) adds sitewide pricing, tag-based tiers, and SKU overrides. Pro (${PLAN_PRICES.pro.display}/mo) adds CSV import, scheduled pricing, and priority support.')}
             ${faqItem('How does billing work?',
               'Billing is handled by Shopify. Charges appear on your Shopify invoice. A 14-day free trial applies to new Growth and Pro subscriptions. You may cancel at any time from your Shopify billing settings.')}
           </div>
