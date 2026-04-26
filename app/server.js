@@ -1113,28 +1113,26 @@ function renderPublicHome() {
   return `
     <html>
       <head>
-        <title>PriceGuard</title>
+        <title>PriceGuard — Customer-Specific Pricing for Shopify</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
         <style>
-          body { font-family: Arial, sans-serif; padding: 32px; color: #111; }
-          .card { max-width: 760px; border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px; }
-          h1 { margin-top: 0; }
-          ul { line-height: 1.7; }
-          input { padding: 10px; width: 320px; }
-          button { padding: 10px 14px; cursor: pointer; }
-          .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+          body { font-family: Arial, sans-serif; padding: 48px 24px; color: #111; background: #f9fafb; }
+          .card { max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 16px; padding: 40px; background: #fff; text-align: center; }
+          h1 { margin: 0 0 12px; font-size: 28px; }
+          p { color: #4b5563; line-height: 1.6; margin: 0 0 32px; }
+          .btn-primary { display: inline-block; padding: 14px 28px; background: #0b4f6c; color: #fff; border-radius: 10px; font-weight: 700; font-size: 16px; text-decoration: none; }
+          .btn-primary:hover { background: #0a3d56; }
+          .btn-secondary { display: inline-block; margin-top: 16px; font-size: 14px; color: #6b7280; text-decoration: none; }
+          .btn-secondary:hover { color: #374151; }
         </style>
       </head>
       <body>
         <div class="card">
           <h1>PriceGuard</h1>
-          <p>Embedded App shell is ready.</p>
-          <form class="row" method="get" action="/install">
-            <input name="shop" placeholder="store-name.myshopify.com" />
-            <button type="submit">Install App</button>
-          </form>
-          <ul>
-            <li><a href="/health">/health</a></li>
-          </ul>
+          <p>Set customer-specific pricing tiers and per-customer price overrides directly in your Shopify store. Install PriceGuard from the Shopify App Store to get started.</p>
+          <a class="btn-primary" href="https://apps.shopify.com/priceguard">Get PriceGuard on the Shopify App Store</a>
+          <br />
+          <a class="btn-secondary" href="https://priceguard.sample-guard.com/support">Contact support</a>
         </div>
       </body>
     </html>
@@ -3870,15 +3868,17 @@ app.get("/billing/callback", async (req, res) => {
 
     const activeSub = await getActiveSubscription(shop, shopRow.access_token).catch(() => null);
 
-    if (activeSub) {
-      const subName = activeSub.name || '';
-      const newPlan = subName.includes('Growth') ? 'growth' : 'pro';
-      await pool.query(
-        `UPDATE shops SET plan_name = $1, plan_status = 'active', updated_at = NOW()
-         WHERE id = $2`,
-        [newPlan, shopRow.id]
-      );
+    if (!activeSub) {
+      return res.redirect(getEmbeddedAppUrl(shop, host, `/plans?shop=${encodeURIComponent(shop)}&billing=declined`));
     }
+
+    const subName = activeSub.name || '';
+    const newPlan = subName.includes('Growth') ? 'growth' : 'pro';
+    await pool.query(
+      `UPDATE shops SET plan_name = $1, plan_status = 'active', updated_at = NOW()
+       WHERE id = $2`,
+      [newPlan, shopRow.id]
+    );
 
     const sessionKey = await createAppSession(shopRow.id, shop);
     const sessionCookieVal = encodeURIComponent(makeSignedCookie(sessionKey));
@@ -4018,6 +4018,8 @@ app.get("/plans", requireShopSession, async (req, res) => {
       </div>`;
     }
 
+    const billingDeclined = req.query.billing === 'declined';
+
     const content = `
       ${renderBrandHero({
         shop,
@@ -4029,6 +4031,7 @@ app.get("/plans", requireShopSession, async (req, res) => {
         subtitle: "Compare plans and upgrade to unlock more features.",
         active: "plans"
       })}
+      ${billingDeclined ? `<div style="margin-bottom:16px;padding:14px 18px;background:#fef2f2;border:1px solid #fca5a5;border-radius:10px;color:#b91c1c;font-size:14px;font-weight:600;">Subscription wasn't approved. Please choose a plan to continue.</div>` : ''}
       <div style="display:flex;gap:20px;flex-wrap:wrap;justify-content:center;margin-top:8px;">
         ${plans.map(renderPlanCard).join("")}
       </div>
