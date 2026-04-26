@@ -552,7 +552,7 @@ function capitalisePlan(planName) {
   }
 }
 
-function renderLayout({ shop, host, apiKey, title, content }) {
+function renderLayout({ shop, host, apiKey, title, content, hasSession = false }) {
   const apiKeySafe = escapeHtml(apiKey || "");
 
   return `
@@ -1061,7 +1061,7 @@ function renderLayout({ shop, host, apiKey, title, content }) {
 
 </style>
   </head>
-  <body>
+  <body data-has-session="${hasSession ? 'true' : 'false'}">
     <div class="page-shell">
     <div class="wrap">
       ${content}
@@ -1079,9 +1079,14 @@ function renderLayout({ shop, host, apiKey, title, content }) {
           const token = state && state.token;
           if (token) {
             sessionStorage.setItem('pg_session_token', token);
-            fetch('/api/session-token', {
-              headers: { 'Authorization': 'Bearer ' + token }
-            }).catch(function() {});
+            if (document.body.dataset.hasSession !== 'true') {
+              fetch('/auth/session-token', {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + token }
+              }).then(function(r) {
+                if (r.ok) { location.reload(); }
+              }).catch(function() {});
+            }
           }
         }).catch(function() {});
 
@@ -1215,7 +1220,7 @@ function renderNav(shop, host, active) {
   `;
 }
 
-function renderDashboard({ shop, apiKey, dashboard, host }) {
+function renderDashboard({ shop, apiKey, dashboard, host, hasSession = false }) {
   const shopSafe = escapeHtml(shop);
   const planName = escapeHtml(dashboard.shop.plan_name || "free");
   const planStatus = escapeHtml(dashboard.shop.plan_status || "inactive");
@@ -1368,10 +1373,10 @@ function renderDashboard({ shop, apiKey, dashboard, host }) {
     </div>
   `;
 
-  return renderLayout({ shop, host, apiKey, title: "PriceGuard", content });
+  return renderLayout({ shop, host, apiKey, title: "PriceGuard", content, hasSession });
 }
 
-function renderPricingTiersPage({ shop, host, apiKey, dashboard, tiers, tierCount = 0, tierLimit = null }) {
+function renderPricingTiersPage({ shop, host, apiKey, dashboard, tiers, tierCount = 0, tierLimit = null, hasSession = false }) {
   const rows = tiers.length === 0
     ? `<div class="empty">No pricing tiers yet. Create your first tier below to begin.</div>`
     : `
@@ -1525,10 +1530,10 @@ function renderPricingTiersPage({ shop, host, apiKey, dashboard, tiers, tierCoun
     </div>
   `;
 
-  return renderLayout({ shop, host, apiKey, title: "PriceGuard | Pricing Tiers", content });
+  return renderLayout({ shop, host, apiKey, title: "PriceGuard | Pricing Tiers", content, hasSession });
 }
 
-function renderCustomerAssignmentsPage({ shop, host, apiKey, dashboard, tiers, assignments, tierCount = 0, tierLimit = null }) {
+function renderCustomerAssignmentsPage({ shop, host, apiKey, dashboard, tiers, assignments, tierCount = 0, tierLimit = null, hasSession = false }) {
   const { customerLimit, scheduling } = getPlanLimits(dashboard.shop.plan_name);
   const distinctCustomerCount = new Set(assignments.map(a => a.customer_email)).size;
   const customerLimitReached = customerLimit !== null && distinctCustomerCount >= customerLimit;
@@ -1672,7 +1677,7 @@ function renderCustomerAssignmentsPage({ shop, host, apiKey, dashboard, tiers, a
     </div>
   `;
 
-  return renderLayout({ shop, host, apiKey, title: "PriceGuard | Customer Assignments", content });
+  return renderLayout({ shop, host, apiKey, title: "PriceGuard | Customer Assignments", content, hasSession });
 }
 
 // --- Cookie and session helpers ---
@@ -1780,6 +1785,7 @@ async function requireShopSession(req, res, next) {
       if (result.rowCount > 0) {
         const row = result.rows[0];
         if (new Date(row.expires_at) >= new Date() && row.shop_domain === shop) {
+          req.pgHasSession = true;
           return next();
         }
         if (new Date(row.expires_at) < new Date()) {
@@ -1825,7 +1831,8 @@ app.get("/", requireShopSessionIfShop, async (req, res) => {
           shop,
           apiKey: process.env.SHOPIFY_API_KEY || "",
           dashboard,
-          host
+          host,
+          hasSession: req.pgHasSession || false
         }));
       }
     }
@@ -1856,7 +1863,8 @@ app.get("/pricing-tiers", requireShopSession, async (req, res) => {
       dashboard,
       tiers,
       tierCount,
-      tierLimit
+      tierLimit,
+      hasSession: req.pgHasSession || false
     }));
   } catch (e) {
     return res.status(500).send(`Pricing Tiers load failed: ${escapeHtml(e.message)}`);
@@ -2028,7 +2036,8 @@ app.get("/customer-assignments", requireShopSession, async (req, res) => {
       tierCount,
       tierLimit,
       prefillEmail: useEmail,
-      prefillId: useId
+      prefillId: useId,
+      hasSession: req.pgHasSession || false
     }));
   } catch (e) {
     return res.status(500).send(`Customer Assignments load failed: ${escapeHtml(e.message)}`);
@@ -2472,7 +2481,7 @@ app.get('/customer-product-prices', requireShopSession, async (req, res) => {
       </div>
     `;
 
-    return res.send(renderLayout({ shop, host, apiKey: process.env.SHOPIFY_API_KEY || '', title: 'PriceGuard | Price Overrides', content }));
+    return res.send(renderLayout({ shop, host, apiKey: process.env.SHOPIFY_API_KEY || '', title: 'PriceGuard | Price Overrides', content, hasSession: req.pgHasSession || false }));
   } catch (e) {
     return res.status(500).send(`Customer product prices load failed: ${escapeHtml(e.message)}`);
   }
@@ -2720,7 +2729,7 @@ app.post('/customer-product-prices/:id/delete', requireShopSession, async (req, 
 });
 
 
-function renderPricingPreviewPage({ shop, host, apiKey, customerEmail = "", preview = null }) {
+function renderPricingPreviewPage({ shop, host, apiKey, customerEmail = "", preview = null, hasSession = false }) {
   const assignmentState = preview
     ? ruleStatus(preview.assignment_starts_at, preview.assignment_ends_at, preview.assignment_enabled)
     : "";
@@ -2818,7 +2827,7 @@ function renderPricingPreviewPage({ shop, host, apiKey, customerEmail = "", prev
     </div>
   `;
 
-  return renderLayout({ shop, host, apiKey, title: "PriceGuard | Pricing Preview", content });
+  return renderLayout({ shop, host, apiKey, title: "PriceGuard | Pricing Preview", content, hasSession });
 }
 
 
@@ -2847,7 +2856,8 @@ app.get("/pricing-preview", requireShopSession, async (req, res) => {
       host,
       apiKey: process.env.SHOPIFY_API_KEY || "",
       customerEmail,
-      preview
+      preview,
+      hasSession: req.pgHasSession || false
     }));
   } catch (e) {
     return res.status(500).send(`Pricing Preview load failed: ${escapeHtml(e.message)}`);
@@ -3694,6 +3704,35 @@ app.get("/proxy/prices", async (req, res) => {
   }
 });
 
+app.post("/auth/session-token", async (req, res) => {
+  const authHeader = req.headers.authorization || "";
+  if (!authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({ success: false, error: "Missing Bearer token" });
+  }
+  const token = authHeader.slice(7);
+  const apiSecret = process.env.SHOPIFY_API_SECRET || "";
+  const verified = verifySessionToken(token, apiSecret);
+  if (!verified) {
+    return res.status(401).json({ success: false, error: "Invalid or expired token" });
+  }
+  try {
+    const shopRes = await pool.query(
+      `SELECT id, shop_domain FROM shops WHERE shop_domain = $1 LIMIT 1`,
+      [verified.shop]
+    );
+    if (shopRes.rowCount === 0) {
+      return res.status(404).json({ success: false, error: "Shop not installed" });
+    }
+    const shopRow = shopRes.rows[0];
+    const sessionKey = await createAppSession(shopRow.id, shopRow.shop_domain);
+    const sessionCookieVal = encodeURIComponent(makeSignedCookie(sessionKey));
+    res.setHeader("Set-Cookie", `pg_session=${sessionCookieVal}; HttpOnly; Secure; SameSite=None; Max-Age=86400; Path=/`);
+    return res.json({ success: true, shop: shopRow.shop_domain });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: "Session creation failed" });
+  }
+});
+
 app.get("/api/session-token", (req, res) => {
   const authHeader = req.headers.authorization || "";
   if (!authHeader.startsWith("Bearer ")) {
@@ -4045,7 +4084,7 @@ app.get("/plans", requireShopSession, async (req, res) => {
       </div>
     `;
 
-    return res.send(renderLayout({ shop, host, apiKey: process.env.SHOPIFY_API_KEY || "", title: "PriceGuard | Plans & Pricing", content }));
+    return res.send(renderLayout({ shop, host, apiKey: process.env.SHOPIFY_API_KEY || "", title: "PriceGuard | Plans & Pricing", content, hasSession: req.pgHasSession || false }));
   } catch (e) {
     return res.status(500).send(`Plans page failed: ${escapeHtml(e.message)}`);
   }
@@ -4133,7 +4172,8 @@ app.get("/app", requireShopSession, async (req, res) => {
       shop,
       apiKey: process.env.SHOPIFY_API_KEY || "",
       dashboard,
-      host
+      host,
+      hasSession: req.pgHasSession || false
     }));
   } catch (e) {
     return res.status(500).send(`Embedded App load failed: ${escapeHtml(e.message)}`);
@@ -4253,7 +4293,8 @@ app.get("/settings", requireShopSession, async (req, res) => {
       host,
       apiKey: process.env.SHOPIFY_API_KEY || "",
       title: "PriceGuard | Settings",
-      content
+      content,
+      hasSession: req.pgHasSession || false
     }));
   } catch (e) {
     return res.status(500).send(`Settings load failed: ${escapeHtml(e.message)}`);
@@ -4513,7 +4554,7 @@ app.get('/support-embedded', requireShopSession, async (req, res) => {
       </div>
     `;
 
-    return res.send(renderLayout({ shop, host, apiKey: process.env.SHOPIFY_API_KEY || '', title: 'PriceGuard | Support', content }));
+    return res.send(renderLayout({ shop, host, apiKey: process.env.SHOPIFY_API_KEY || '', title: 'PriceGuard | Support', content, hasSession: req.pgHasSession || false }));
   } catch (e) {
     return res.status(500).send(`Support page failed: ${escapeHtml(e.message)}`);
   }
