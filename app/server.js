@@ -1079,8 +1079,22 @@ function renderLayout({ shop, host, apiKey, title, content }) {
           const token = state && state.token;
           if (token) {
             sessionStorage.setItem('pg_session_token', token);
+            fetch('/api/session-token', {
+              headers: { 'Authorization': 'Bearer ' + token }
+            }).catch(function() {});
           }
         }).catch(function() {});
+
+        const _origFetch = window.fetch;
+        window.fetch = function(url, opts) {
+          opts = opts || {};
+          opts.headers = opts.headers || {};
+          const token = sessionStorage.getItem('pg_session_token');
+          if (token && !opts.headers['Authorization']) {
+            opts.headers['Authorization'] = 'Bearer ' + token;
+          }
+          return _origFetch(url, opts);
+        };
       }
     </script>
     <div style="margin-top:32px;padding:16px 0 8px;border-top:1px solid #e5e7eb;text-align:center;font-size:13px;color:#9ca3af;">
