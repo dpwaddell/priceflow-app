@@ -1114,101 +1114,6 @@ function renderLayout({ shop, host, apiKey, title, content, hasSession = false }
   `;
 }
 
-function renderLoadingShell(shop, host, apiKey) {
-  const apiKeySafe = escapeHtml(apiKey || "");
-  const shopSafe = escapeHtml(shop || "");
-  return `<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <title>PriceGuard</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <script src="https://cdn.shopify.com/shopifycloud/app-bridge.js" data-api-key="${apiKeySafe}"></script>
-    <style>
-      body { margin: 0; font-family: Arial, sans-serif; background: #f4f6f8;
-             display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-      .shell { text-align: center; color: #6b7280; }
-      .shell p { margin: 0 0 6px; font-size: 15px; color: #374151; font-weight: 600; }
-      .shell small { font-size: 13px; }
-    </style>
-  </head>
-  <body data-has-session="false">
-    <div class="shell">
-      <p>Loading PriceGuard&hellip;</p>
-      <small id="pg-status">Authenticating with Shopify</small>
-    </div>
-    <script>
-      (function() {
-        var shop = '${shopSafe}';
-        var apiKey = '${apiKeySafe}';
-        var statusEl = document.getElementById('pg-status');
-
-        function setStatus(msg) {
-          if (statusEl) statusEl.textContent = msg;
-        }
-
-        // If we exchanged a token and reloaded within the last 5 seconds but still
-        // landed on the loading shell, the cookie didn't persist (e.g. incognito
-        // third-party cookie block). Go straight to OAuth.
-        var lastReload = parseInt(sessionStorage.getItem('pg_reload_ts') || '0', 10);
-        if (Date.now() - lastReload < 5000) {
-          setStatus('Cookie not persisting, redirecting to install...');
-          window.top.location.href = '/install?shop=' + shop;
-          return;
-        }
-
-        function exchangeToken(token) {
-          setStatus('Exchanging token...');
-          fetch('/auth/session-token', {
-            method: 'POST',
-            headers: { 'Authorization': 'Bearer ' + token }
-          }).then(function(r) {
-            if (r.ok) {
-              setStatus('Success, loading...');
-              sessionStorage.setItem('pg_reload_ts', String(Date.now()));
-              window.top.location.href = window.location.href;
-            } else {
-              setStatus('Token exchange failed (' + r.status + '), redirecting...');
-              setTimeout(function() { window.top.location.href = '/install?shop=' + shop; }, 1500);
-            }
-          }).catch(function(e) {
-            setStatus('Network error, redirecting...');
-            setTimeout(function() { window.top.location.href = '/install?shop=' + shop; }, 1500);
-          });
-        }
-
-        function tryGetToken() {
-          if (window.shopify && typeof window.shopify.idToken === 'function') {
-            setStatus('Getting session token...');
-            window.shopify.idToken().then(function(token) {
-              if (token) { exchangeToken(token); }
-              else { fallbackToOAuth(); }
-            }).catch(function() { fallbackToOAuth(); });
-          } else {
-            fallbackToOAuth();
-          }
-        }
-
-        function fallbackToOAuth() {
-          setStatus('Redirecting to install...');
-          window.top.location.href = '/install?shop=' + shop;
-        }
-
-        if (document.readyState === 'complete') {
-          setTimeout(tryGetToken, 500);
-        } else {
-          window.addEventListener('load', function() { setTimeout(tryGetToken, 500); });
-        }
-
-        setTimeout(function() {
-          setStatus('Timeout, redirecting to install...');
-          window.top.location.href = '/install?shop=' + shop;
-        }, 8000);
-      })();
-    </script>
-  </body>
-</html>`;
-}
 
 function renderPublicHome() {
   return `
@@ -1893,19 +1798,7 @@ async function requireShopSession(req, res, next) {
     }
   }
 
-  const authHeader = req.headers.authorization || "";
-  if (authHeader.startsWith("Bearer ")) {
-    const token = authHeader.slice(7);
-    const apiSecret = process.env.SHOPIFY_API_SECRET || "";
-    const verified = verifySessionToken(token, apiSecret);
-    if (verified && verified.shop === shop) {
-      req.pgHasSession = true;
-      return next();
-    }
-  }
-
-  req.pgHasSession = false;
-  return next();
+  return res.redirect(`/install?shop=${encodeURIComponent(shop)}`);
 }
 
 async function requireShopSessionIfShop(req, res, next) {
@@ -1923,7 +1816,6 @@ app.get("/", requireShopSessionIfShop, async (req, res) => {
     const useId = String(req.query.use_id || "").trim();
 
     if (shop) {
-      if (!req.pgHasSession) return res.send(renderLoadingShell(shop, host, process.env.SHOPIFY_API_KEY || ""));
       const dashboard = await getDashboardData(shop);
       if (dashboard) {
         return res.send(renderDashboard({
@@ -1947,7 +1839,7 @@ app.get("/pricing-tiers", requireShopSession, async (req, res) => {
     const shop = sanitizeShop(req.query.shop);
     const host = String(req.query.host || "");
     if (!shop) return res.status(400).send("Missing or invalid shop.");
-    if (!req.pgHasSession) return res.send(renderLoadingShell(shop, host, process.env.SHOPIFY_API_KEY || ""));
+
 
     const dashboard = await getDashboardData(shop);
     if (!dashboard) return res.status(404).send("Shop not found.");
@@ -1976,7 +1868,7 @@ app.post("/pricing-tiers", requireShopSession, async (req, res) => {
     const shop = sanitizeShop(req.query.shop);
     const host = String(req.query.host || "");
     if (!shop) return res.status(400).send("Missing or invalid shop.");
-    if (!req.pgHasSession) return res.status(401).send("Not authenticated.");
+
 
     const shopRow = await getShopByDomain(shop);
     if (!shopRow) return res.status(404).send("Shop not found.");
@@ -2039,7 +1931,7 @@ app.post("/pricing-tiers/:id/toggle", requireShopSession, async (req, res) => {
     const host = String(req.query.host || "");
     const id = Number(req.params.id);
     if (!shop || !Number.isFinite(id)) return res.status(400).send("Invalid request.");
-    if (!req.pgHasSession) return res.status(401).send("Not authenticated.");
+
 
     const shopRow = await getShopByDomain(shop);
     if (!shopRow) return res.status(404).send("Shop not found.");
@@ -2080,7 +1972,7 @@ app.post("/pricing-tiers/:id/delete", requireShopSession, async (req, res) => {
     const host = String(req.query.host || "");
     const id = Number(req.params.id);
     if (!shop || !Number.isFinite(id)) return res.status(400).send("Invalid request.");
-    if (!req.pgHasSession) return res.status(401).send("Not authenticated.");
+
 
     const shopRow = await getShopByDomain(shop);
     if (!shopRow) return res.status(404).send("Shop not found.");
@@ -2120,7 +2012,7 @@ app.get("/customer-assignments", requireShopSession, async (req, res) => {
     const useEmail = String(req.query.use_email || "").trim();
     const useId = String(req.query.use_id || "").trim();
     if (!shop) return res.status(400).send("Missing or invalid shop.");
-    if (!req.pgHasSession) return res.send(renderLoadingShell(shop, host, process.env.SHOPIFY_API_KEY || ""));
+
 
     const dashboard = await getDashboardData(shop);
     if (!dashboard) return res.status(404).send("Shop not found.");
@@ -2153,7 +2045,7 @@ app.post("/customer-assignments", requireShopSession, async (req, res) => {
     const shop = sanitizeShop(req.query.shop);
     const host = String(req.query.host || "");
     if (!shop) return res.status(400).send("Missing or invalid shop.");
-    if (!req.pgHasSession) return res.status(401).send("Not authenticated.");
+
 
     const shopRow = await getShopByDomain(shop);
     if (!shopRow) return res.status(404).send("Shop not found.");
@@ -2228,7 +2120,7 @@ app.post("/customer-assignments/:id/toggle", requireShopSession, async (req, res
     const host = String(req.query.host || "");
     const id = Number(req.params.id);
     if (!shop || !Number.isFinite(id)) return res.status(400).send("Invalid request.");
-    if (!req.pgHasSession) return res.status(401).send("Not authenticated.");
+
 
     const shopRow = await getShopByDomain(shop);
     if (!shopRow) return res.status(404).send("Shop not found.");
@@ -2268,7 +2160,7 @@ app.post("/customer-assignments/:id/delete", requireShopSession, async (req, res
     const host = String(req.query.host || "");
     const id = Number(req.params.id);
     if (!shop || !Number.isFinite(id)) return res.status(400).send("Invalid request.");
-    if (!req.pgHasSession) return res.status(401).send("Not authenticated.");
+
 
     const shopRow = await getShopByDomain(shop);
     if (!shopRow) return res.status(404).send("Shop not found.");
@@ -2321,7 +2213,7 @@ app.get('/customer-product-prices', requireShopSession, async (req, res) => {
     const shop = sanitizeShop(req.query.shop);
     const host = String(req.query.host || '');
     if (!shop) return res.status(400).send('Missing or invalid shop.');
-    if (!req.pgHasSession) return res.send(renderLoadingShell(shop, host, process.env.SHOPIFY_API_KEY || ''));
+
     const dashboard = await getDashboardData(shop);
     if (!dashboard) return res.status(404).send('Shop not found.');
     const shopId = dashboard.shop.id;
@@ -2658,7 +2550,7 @@ app.get('/customer-product-prices/export.csv', requireShopSession, async (req, r
   try {
     const shop = sanitizeShop(req.query.shop);
     if (!shop) return res.status(400).send('Missing or invalid shop.');
-    if (!req.pgHasSession) return res.status(401).send('Not authenticated.');
+
     const shopRow = await getPriceGuardShopByDomain(shop);
     if (!shopRow) return res.status(404).send('Shop not found.');
 
@@ -2706,7 +2598,7 @@ app.post('/customer-product-prices', requireShopSession, async (req, res) => {
     const shop = sanitizeShop(req.query.shop);
     const host = String(req.query.host || '');
     if (!shop) return res.status(400).send('Missing or invalid shop.');
-    if (!req.pgHasSession) return res.status(401).send('Not authenticated.');
+
     const shopRow = await getShopByDomain(shop);
     if (!shopRow) return res.status(404).send('Shop not found.');
     if (!getPlanLimits(shopRow.plan_name).skuOverrides) return res.status(403).send('Customer product price overrides require the Growth or Pro plan.');
@@ -2741,7 +2633,7 @@ app.post('/customer-product-prices/import', requireShopSession, express.raw({ ty
     const shop = sanitizeShop(req.query.shop);
     const host = String(req.query.host || '');
     if (!shop) return res.status(400).send('Missing or invalid shop.');
-    if (!req.pgHasSession) return res.status(401).send('Not authenticated.');
+
     const shopRow = await getShopByDomain(shop);
     if (!shopRow) return res.status(404).send('Shop not found.');
     if (!getPlanLimits(shopRow.plan_name).csvImport) return res.status(403).send('CSV import requires the Pro plan.');
@@ -2822,7 +2714,7 @@ app.post('/customer-product-prices/:id/delete', requireShopSession, async (req, 
     const host = String(req.query.host || '');
     const id = Number(req.params.id);
     if (!shop || !Number.isFinite(id)) return res.status(400).send('Invalid request.');
-    if (!req.pgHasSession) return res.status(401).send('Not authenticated.');
+
     const shopRow = await getShopByDomain(shop);
     if (!shopRow) return res.status(404).send('Shop not found.');
 
@@ -2952,7 +2844,7 @@ app.get("/pricing-preview", requireShopSession, async (req, res) => {
     if (!shop) {
       return res.status(400).send("Missing or invalid shop.");
     }
-    if (!req.pgHasSession) return res.send(renderLoadingShell(shop, host, process.env.SHOPIFY_API_KEY || ""));
+
 
     const dashboard = await getDashboardData(shop);
     if (!dashboard) {
@@ -3985,7 +3877,7 @@ app.post('/dashboard/mark-reviewed', requireShopSession, async (req, res) => {
     const shop = sanitizeShop(req.query.shop);
     const host = String(req.query.host || '');
     if (!shop) return res.status(400).send('Missing or invalid shop.');
-    if (!req.pgHasSession) return res.status(401).send('Not authenticated.');
+
     const shopRow = await getShopByDomain(shop);
     if (!shopRow) return res.status(404).send('Shop not found.');
 
@@ -4068,7 +3960,7 @@ app.get("/plans", requireShopSession, async (req, res) => {
     const shop = sanitizeShop(req.query.shop);
     const host = String(req.query.host || "");
     if (!shop) return res.status(400).send("Missing or invalid shop.");
-    if (!req.pgHasSession) return res.send(renderLoadingShell(shop, host, process.env.SHOPIFY_API_KEY || ""));
+
 
     const dashboard = await getDashboardData(shop);
     if (!dashboard) return res.status(404).send("Shop not found.");
@@ -4223,7 +4115,7 @@ app.get("/billing/upgrade", requireShopSession, async (req, res) => {
     const shop = sanitizeShop(req.query.shop);
     const host = String(req.query.host || "");
     if (!shop) return res.status(400).send("Missing or invalid shop.");
-    if (!req.pgHasSession) return res.redirect(`/install?shop=${encodeURIComponent(shop)}`);
+
     const planName = ['growth', 'pro'].includes(req.query.plan) ? req.query.plan : 'pro';
 
     const shopRes = await pool.query(
@@ -4291,7 +4183,7 @@ app.get("/app", requireShopSession, async (req, res) => {
     if (!shop) {
       return res.status(400).send("Missing or invalid shop.");
     }
-    if (!req.pgHasSession) return res.send(renderLoadingShell(shop, host, process.env.SHOPIFY_API_KEY || ""));
+
 
     const dashboard = await getDashboardData(shop);
     if (!dashboard) {
@@ -4315,7 +4207,7 @@ app.get("/settings", requireShopSession, async (req, res) => {
     const shop = sanitizeShop(req.query.shop);
     const host = String(req.query.host || "");
     if (!shop) return res.status(400).send("Missing or invalid shop.");
-    if (!req.pgHasSession) return res.send(renderLoadingShell(shop, host, process.env.SHOPIFY_API_KEY || ""));
+
 
     const dashboard = await getDashboardData(shop);
     if (!dashboard) return res.status(404).send("Shop not found.");
@@ -4437,7 +4329,7 @@ app.post('/settings/reset', requireShopSession, async (req, res) => {
     const shop = sanitizeShop(req.query.shop);
     const host = String(req.query.host || '');
     if (!shop) return res.status(400).send('Missing or invalid shop.');
-    if (!req.pgHasSession) return res.status(401).send('Not authenticated.');
+
     const shopRow = await getShopByDomain(shop);
     if (!shopRow) return res.status(404).send('Shop not found.');
 
@@ -4635,7 +4527,7 @@ app.get('/support-embedded', requireShopSession, async (req, res) => {
     const shop = sanitizeShop(req.query.shop);
     const host = String(req.query.host || '');
     if (!shop) return res.status(400).send('Missing or invalid shop.');
-    if (!req.pgHasSession) return res.send(renderLoadingShell(shop, host, process.env.SHOPIFY_API_KEY || ''));
+
     const dashboard = await getDashboardData(shop);
     if (!dashboard) return res.status(404).send('Shop not found.');
 
