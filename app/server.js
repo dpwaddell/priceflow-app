@@ -92,75 +92,8 @@ async function shopifyAdminGraphQL(shopDomain, accessToken, query, variables = {
   return json.data || {};
 }
 
-async function createShopifySubscription(shopDomain, accessToken, returnUrl, planName = 'pro') {
-  const PLAN_CONFIG = {
-    growth: { name: 'PriceGuard Growth', price: PLAN_PRICES.growth.monthly },
-    pro:    { name: 'PriceGuard Pro',    price: PLAN_PRICES.pro.monthly }
-  };
-  const plan = PLAN_CONFIG[planName] || PLAN_CONFIG.pro;
+// Shopify Managed Pricing is used for subscriptions. Billing API charge creation removed for App Store compliance.
 
-  const mutation = `#graphql
-    mutation AppSubscriptionCreate(
-      $name: String!
-      $lineItems: [AppSubscriptionLineItemInput!]!
-      $returnUrl: URL!
-      $trialDays: Int!
-    ) {
-      appSubscriptionCreate(
-        name: $name
-        lineItems: $lineItems
-        returnUrl: $returnUrl
-        trialDays: $trialDays
-      ) {
-        appSubscription { id status }
-        confirmationUrl
-        userErrors { field message }
-      }
-    }
-  `;
-
-  const variables = {
-    name: plan.name,
-    returnUrl,
-    trialDays: 14,
-    lineItems: [
-      {
-        plan: {
-          appRecurringPricingDetails: {
-            price: { amount: plan.price, currencyCode: "USD" },
-            interval: "EVERY_30_DAYS"
-          }
-        }
-      }
-    ]
-  };
-
-  const response = await fetch(`https://${shopDomain}/admin/api/2026-04/graphql.json`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Shopify-Access-Token": accessToken
-    },
-    body: JSON.stringify({ query: mutation, variables })
-  });
-
-  if (!response.ok) {
-    throw new Error(`Shopify billing API returned ${response.status}`);
-  }
-
-  const json = await response.json();
-
-  if (json.errors?.length) {
-    throw new Error(`Billing mutation error: ${JSON.stringify(json.errors)}`);
-  }
-
-  const result = json.data?.appSubscriptionCreate;
-  if (result?.userErrors?.length) {
-    throw new Error(`Billing user error: ${result.userErrors.map(e => e.message).join(", ")}`);
-  }
-
-  return result?.confirmationUrl || null;
-}
 
 async function getActiveSubscription(shopDomain, accessToken) {
   const query = `#graphql
@@ -1192,7 +1125,7 @@ function renderBrandHero(opts) {
     + (planStatus === 'frozen'
         ? '<div style="margin-top:12px;padding:14px 18px;background:#fef3c7;border:1px solid #fcd34d;border-radius:14px;color:#92400e;font-size:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">'
           + '<span>⚠️ <strong>Your subscription is frozen.</strong> Please update your payment method in Shopify billing to restore access.</span>'
-          + '<a href="#" onclick="event.preventDefault(); window.top.location.href=\'https://admin.shopify.com/store/' + shop.replace('.myshopify.com', '') + '/charges/priceflow-app/pricing_plans\';" style="font-weight:700;color:#92400e;white-space:nowrap;">Shopify billing →</a>'
+          + '<a href="#" onclick="event.preventDefault(); window.top.location.href=\'https://admin.shopify.com/store/' + shop.replace('.myshopify.com', '') + '/charges/priceguard/pricing_plans\';" style="font-weight:700;color:#92400e;white-space:nowrap;">Shopify billing →</a>'
           + '</div>'
         : '');
 }
@@ -4056,7 +3989,7 @@ app.get("/plans", requireShopSession, async (req, res) => {
       if (isCurrent) {
         ctaHtml = `<div style="text-align:center;padding:12px;background:#f0fdf4;border-radius:10px;color:#16a34a;font-weight:700;font-size:14px;">Your current plan</div>`
           + (plan.id !== 'free'
-              ? `<a href="#" onclick="event.preventDefault(); window.top.location.href='https://admin.shopify.com/store/${shop.replace('.myshopify.com', '')}/charges/priceflow-app/pricing_plans';" style="display:block;text-align:center;margin-top:8px;padding:10px 12px;border:1px solid #d1d5db;border-radius:10px;color:#374151;font-size:14px;font-weight:600;text-decoration:none;">Manage subscription →</a>`
+              ? `<a href="#" onclick="event.preventDefault(); window.top.location.href='https://admin.shopify.com/store/${shop.replace('.myshopify.com', '')}/charges/priceguard/pricing_plans';" style="display:block;text-align:center;margin-top:8px;padding:10px 12px;border:1px solid #d1d5db;border-radius:10px;color:#374151;font-size:14px;font-weight:600;text-decoration:none;">Manage subscription →</a>`
               : '');
       } else if (!isLower) {
         ctaHtml = `<a href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=${plan.id}" style="display:block;text-align:center;padding:12px;background:${plan.headerBg};color:#fff;border-radius:10px;font-weight:700;font-size:14px;text-decoration:none;">Upgrade to ${escapeHtml(plan.name)}</a>`;
@@ -4096,7 +4029,7 @@ app.get("/plans", requireShopSession, async (req, res) => {
         ${plans.map(renderPlanCard).join("")}
       </div>
       <div style="margin-top:24px;text-align:center;font-size:13px;color:#9ca3af;">
-        All plans include a 14-day free trial. <a href="#" onclick="event.preventDefault(); window.top.location.href='https://admin.shopify.com/store/${shop.replace('.myshopify.com', '')}/charges/priceflow-app/pricing_plans';" style="color:#6b7280;">Manage your subscription in Shopify billing →</a>
+        All plans include a 14-day free trial. <a href="#" onclick="event.preventDefault(); window.top.location.href='https://admin.shopify.com/store/${shop.replace('.myshopify.com', '')}/charges/priceguard/pricing_plans';" style="color:#6b7280;">Manage your subscription in Shopify billing →</a>
       </div>
     `;
 
@@ -4109,54 +4042,14 @@ app.get("/plans", requireShopSession, async (req, res) => {
 app.get("/billing/upgrade", requireShopSession, async (req, res) => {
   try {
     const shop = sanitizeShop(req.query.shop);
-    const host = String(req.query.host || "");
     if (!shop) return res.status(400).send("Missing or invalid shop.");
 
-    const planName = ['growth', 'pro'].includes(req.query.plan) ? req.query.plan : 'pro';
+    // PriceGuard uses Shopify Managed Pricing. Do not create Billing API subscriptions here.
+    // Send merchants to Shopify's managed pricing page so accept, decline, plan changes,
+    // cancellation and reinstall/resubscribe are handled by Shopify.
+    const managedPricingUrl = `https://admin.shopify.com/store/${shop.replace('.myshopify.com', '')}/charges/priceguard/pricing_plans`;
+    const urlSafe = escapeHtml(managedPricingUrl);
 
-    const shopRes = await pool.query(
-      `SELECT id, access_token, token_expires_at FROM shops WHERE shop_domain = $1 LIMIT 1`,
-      [shop]
-    );
-
-    if (shopRes.rowCount === 0 || !shopRes.rows[0].access_token) {
-      return res.status(404).send("Shop not found.");
-    }
-
-    const shopRow = shopRes.rows[0];
-    let accessToken = shopRow.access_token;
-    if (shopRow.token_expires_at) {
-      const expiresAt = new Date(shopRow.token_expires_at);
-      if (expiresAt <= new Date(Date.now() + 5 * 60 * 1000)) {
-        try {
-          accessToken = await refreshShopToken(shop);
-        } catch (refreshErr) {
-          console.warn(`[PRICEGUARD] Token refresh failed for ${shop}, clearing expiry and using existing token:`, refreshErr.message);
-          await pool.query(`UPDATE shops SET token_expires_at = NULL WHERE shop_domain = $1`, [shop]);
-        }
-      }
-    }
-
-    // Skip creating a duplicate if the shop already has an active subscription for this plan.
-    const targetSubName = planName === 'growth' ? 'PriceGuard Growth' : 'PriceGuard Pro';
-    try {
-      const activeSub = await getActiveSubscription(shop, accessToken);
-      if (activeSub && activeSub.status === 'ACTIVE' && activeSub.name === targetSubName) {
-        return res.redirect(getEmbeddedAppUrl(shop, host, '/'));
-      }
-    } catch (subErr) {
-      console.log('[BILLING] active subscription check failed, proceeding:', subErr.message);
-    }
-
-    const appUrl = process.env.APP_URL || "https://priceguard.sample-guard.com";
-    const returnUrl = `${appUrl}/billing/callback?shop=${encodeURIComponent(shop)}`;
-    const confirmationUrl = await createShopifySubscription(shop, accessToken, returnUrl, planName);
-
-    if (!confirmationUrl) {
-      return res.status(500).send("Failed to create subscription. Please try again.");
-    }
-
-    const urlSafe = escapeHtml(confirmationUrl);
     return res.send(`<!doctype html>
 <html>
 <head>
@@ -4256,7 +4149,7 @@ app.get("/settings", requireShopSession, async (req, res) => {
               <a class="btn primary" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro">Upgrade to Pro — ${PLAN_PRICES.pro.display}/mo</a>
               <a class="btn" href="${getEmbeddedAppUrl(shop, host, '/plans')}">See all plans →</a>` : ''}
               ${dashboard.shop.plan_name === 'pro' ? `
-              <span class="muted" style="font-size:13px;">You're on the Pro plan. To cancel or downgrade, manage your subscription in <a href="#" onclick="event.preventDefault(); window.top.location.href='https://admin.shopify.com/store/${shop.replace('.myshopify.com', '')}/charges/priceflow-app/pricing_plans';" style="color:#0b1f55;">Shopify billing</a>.</span>` : ''}
+              <span class="muted" style="font-size:13px;">You're on the Pro plan. To cancel or downgrade, manage your subscription in <a href="#" onclick="event.preventDefault(); window.top.location.href='https://admin.shopify.com/store/${shop.replace('.myshopify.com', '')}/charges/priceguard/pricing_plans';" style="color:#0b1f55;">Shopify billing</a>.</span>` : ''}
             </div>
           </div>
 
