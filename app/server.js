@@ -254,6 +254,23 @@ function badgeClass(status) {
   return "draft";
 }
 
+
+function getManagedPricingUrl(shop) {
+  const safeShop = sanitizeShop(shop);
+  const storeHandle = safeShop.replace('.myshopify.com', '');
+  return `https://admin.shopify.com/store/${storeHandle}/charges/priceflow-app/pricing_plans`;
+}
+
+function managedPricingTopFrameButton(label, shop, style = '') {
+  const url = JSON.stringify(getManagedPricingUrl(shop));
+  return `<button type="button" onclick="window.top.location.href=${escapeHtml(url)}" style="${style}">${escapeHtml(label)}</button>`;
+}
+
+function managedPricingTopFrameLink(label, shop, style = '') {
+  const url = JSON.stringify(getManagedPricingUrl(shop));
+  return `<a href="#" onclick="event.preventDefault(); window.top.location.href=${escapeHtml(url)}" style="${style}">${escapeHtml(label)}</a>`;
+}
+
 function getEmbeddedAppUrl(shop, host = "", path = "/") {
   const base = process.env.APP_URL || "";
   const params = new URLSearchParams({ shop });
@@ -1223,8 +1240,8 @@ function renderDashboard({ shop, apiKey, dashboard, host, hasSession = false }) 
             <div style="font-size:13px;opacity:0.85;">Upgrade to Growth (${PLAN_PRICES.growth.display}/mo) for 3 tiers, 20 customers, and sitewide pricing — or Pro (${PLAN_PRICES.pro.display}/mo) for unlimited.</div>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-            <a href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=growth" style="background:rgba(255,255,255,0.15);color:#fff;font-weight:700;padding:10px 16px;border-radius:12px;text-decoration:none;font-size:14px;white-space:nowrap;border:1px solid rgba(255,255,255,0.3);">Growth — ${PLAN_PRICES.growth.display}/mo</a>
-            <a href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro" style="background:#fff;color:#0b1f55;font-weight:700;padding:10px 16px;border-radius:12px;text-decoration:none;font-size:14px;white-space:nowrap;">Pro — ${PLAN_PRICES.pro.display}/mo</a>
+            ${managedPricingTopFrameLink(`Growth — ${PLAN_PRICES.growth.display}/mo`, shop, 'background:rgba(255,255,255,0.15);color:#fff;font-weight:700;padding:10px 16px;border-radius:12px;text-decoration:none;font-size:14px;white-space:nowrap;border:1px solid rgba(255,255,255,0.3);')}
+            ${managedPricingTopFrameLink(`Pro — ${PLAN_PRICES.pro.display}/mo`, shop, 'background:#fff;color:#0b1f55;font-weight:700;padding:10px 16px;border-radius:12px;text-decoration:none;font-size:14px;white-space:nowrap;')}
             <a href="${getEmbeddedAppUrl(shop, host, '/plans')}" style="color:rgba(255,255,255,0.75);font-size:13px;text-decoration:none;white-space:nowrap;">See all plans →</a>
           </div>
         </div>` : ''}
@@ -1234,7 +1251,7 @@ function renderDashboard({ shop, apiKey, dashboard, host, hasSession = false }) 
             <div style="font-size:13px;opacity:0.85;">Upgrade to Pro (${PLAN_PRICES.pro.display}/mo) for unlimited tiers, CSV import, and scheduled pricing.</div>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-            <a href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro" style="background:#fff;color:#0b4f6c;font-weight:700;padding:10px 16px;border-radius:12px;text-decoration:none;font-size:14px;white-space:nowrap;">Upgrade to Pro — ${PLAN_PRICES.pro.display}/mo</a>
+            ${managedPricingTopFrameLink(`Upgrade to Pro — ${PLAN_PRICES.pro.display}/mo`, shop, 'background:#fff;color:#0b4f6c;font-weight:700;padding:10px 16px;border-radius:12px;text-decoration:none;font-size:14px;white-space:nowrap;')}
             <a href="${getEmbeddedAppUrl(shop, host, '/plans')}" style="color:rgba(255,255,255,0.75);font-size:13px;text-decoration:none;white-space:nowrap;">See all plans →</a>
           </div>
         </div>` : ''}
@@ -1388,9 +1405,9 @@ function renderPricingTiersPage({ shop, host, apiKey, dashboard, tiers, tierCoun
                 ? 'You have reached the Growth plan limit of 3 tiers. Upgrade to Pro for unlimited tiers.'
                 : 'You have reached the Free plan limit of 1 tier. Upgrade to Growth (3 tiers) or Pro (unlimited).';
               const upgradeActions = isGrowth
-                ? `<a class="btn primary" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro">Upgrade to Pro — ${PLAN_PRICES.pro.display}/mo</a>`
-                : `<a class="btn primary" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=growth">Growth — ${PLAN_PRICES.growth.display}/mo</a>
-                   <a class="btn" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro">Pro — ${PLAN_PRICES.pro.display}/mo</a>`;
+                ? `${managedPricingTopFrameLink(`Upgrade to Pro — ${PLAN_PRICES.pro.display}/mo`, shop, 'display:inline-block;background:#0b1f55;color:#fff;padding:10px 14px;border-radius:10px;text-decoration:none;font-weight:700;')}`
+                : `${managedPricingTopFrameLink(`Growth — ${PLAN_PRICES.growth.display}/mo`, shop, 'display:inline-block;background:#0b1f55;color:#fff;padding:10px 14px;border-radius:10px;text-decoration:none;font-weight:700;')}
+                   ${managedPricingTopFrameLink(`Pro — ${PLAN_PRICES.pro.display}/mo`, shop, 'display:inline-block;border:1px solid #d1d5db;color:#111827;padding:10px 14px;border-radius:10px;text-decoration:none;font-weight:700;')}`;
               return `<h2>Create pricing tier ${usageBadge}</h2>
                 <div class="empty" style="margin-bottom:12px;">${upgradeMsg}</div>
                 <div class="actions">
@@ -1431,7 +1448,7 @@ function renderPricingTiersPage({ shop, host, apiKey, dashboard, tiers, tierCoun
                     <input id="ends_at" name="ends_at" type="datetime-local" />
                   </div>` : `
                   <div class="field full">
-                    <div style="font-size:13px;color:#1e40af;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px 14px;">Scheduled pricing is a <strong>Pro plan</strong> feature. <a href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro" style="color:#1e40af;font-weight:700;">Upgrade to Pro →</a></div>
+                    <div style="font-size:13px;color:#1e40af;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px 14px;">Scheduled pricing is a <strong>Pro plan</strong> feature. ${managedPricingTopFrameLink('Upgrade to Pro →', shop, 'color:#1e40af;font-weight:700;')}</div>
                   </div>`}
                   <div class="field full">
                     <label for="is_enabled">Status</label>
@@ -1576,7 +1593,7 @@ function renderCustomerAssignmentsPage({ shop, host, apiKey, dashboard, tiers, a
                 <input id="ends_at" name="ends_at" type="datetime-local" />
               </div>` : `
               <div class="field full">
-                <div style="font-size:13px;color:#1e40af;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px 14px;">Scheduled assignments are a <strong>Pro plan</strong> feature. <a href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro" style="color:#1e40af;font-weight:700;">Upgrade to Pro →</a></div>
+                <div style="font-size:13px;color:#1e40af;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px 14px;">Scheduled assignments are a <strong>Pro plan</strong> feature. ${managedPricingTopFrameLink('Upgrade to Pro →', shop, 'color:#1e40af;font-weight:700;')}</div>
               </div>`}
 
               <div class="field full">
@@ -1746,7 +1763,8 @@ app.get("/", requireShopSessionIfShop, async (req, res) => {
     const useId = String(req.query.use_id || "").trim();
 
     if (shop) {
-      const dashboard = await getDashboardData(shop);
+      await syncBillingStateFromShopify(shop).catch(e => console.warn('[BILLING_SYNC] failed', shop, e.message));
+    const dashboard = await getDashboardData(shop);
       if (dashboard) {
         return res.send(renderDashboard({
           shop,
@@ -1771,6 +1789,7 @@ app.get("/pricing-tiers", requireShopSession, async (req, res) => {
     if (!shop) return res.status(400).send("Missing or invalid shop.");
 
 
+    await syncBillingStateFromShopify(shop).catch(e => console.warn('[BILLING_SYNC] failed', shop, e.message));
     const dashboard = await getDashboardData(shop);
     if (!dashboard) return res.status(404).send("Shop not found.");
 
@@ -1944,6 +1963,7 @@ app.get("/customer-assignments", requireShopSession, async (req, res) => {
     if (!shop) return res.status(400).send("Missing or invalid shop.");
 
 
+    await syncBillingStateFromShopify(shop).catch(e => console.warn('[BILLING_SYNC] failed', shop, e.message));
     const dashboard = await getDashboardData(shop);
     if (!dashboard) return res.status(404).send("Shop not found.");
 
@@ -2144,6 +2164,7 @@ app.get('/customer-product-prices', requireShopSession, async (req, res) => {
     const host = String(req.query.host || '');
     if (!shop) return res.status(400).send('Missing or invalid shop.');
 
+    await syncBillingStateFromShopify(shop).catch(e => console.warn('[BILLING_SYNC] failed', shop, e.message));
     const dashboard = await getDashboardData(shop);
     if (!dashboard) return res.status(404).send('Shop not found.');
     const shopId = dashboard.shop.id;
@@ -2394,8 +2415,8 @@ app.get('/customer-product-prices', requireShopSession, async (req, res) => {
             <h2>Growth / Pro feature</h2>
             <div class="muted">Customer product price overrides require the Growth or Pro plan.</div>
             <div class="actions" style="margin-top:12px;">
-              <a class="btn primary" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=growth">Growth — ${PLAN_PRICES.growth.display}/mo</a>
-              <a class="btn" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro">Pro — ${PLAN_PRICES.pro.display}/mo</a>
+              ${managedPricingTopFrameLink(`Growth — ${PLAN_PRICES.growth.display}/mo`, shop, 'display:inline-block;background:#0b1f55;color:#fff;padding:10px 14px;border-radius:10px;text-decoration:none;font-weight:700;')}
+              ${managedPricingTopFrameLink(`Pro — ${PLAN_PRICES.pro.display}/mo`, shop, 'display:inline-block;border:1px solid #d1d5db;color:#111827;padding:10px 14px;border-radius:10px;text-decoration:none;font-weight:700;')}
               <a class="btn" href="${getEmbeddedAppUrl(shop, host, '/plans')}">See all plans →</a>
             </div>
           </div>`}
@@ -2776,6 +2797,7 @@ app.get("/pricing-preview", requireShopSession, async (req, res) => {
     }
 
 
+    await syncBillingStateFromShopify(shop).catch(e => console.warn('[BILLING_SYNC] failed', shop, e.message));
     const dashboard = await getDashboardData(shop);
     if (!dashboard) {
       return res.status(404).send("Shop not found.");
@@ -3009,6 +3031,35 @@ const SUBSCRIPTION_PLAN_MAP = {
   'Pro': 'pro',
   'Free': 'free',
 };
+
+async function syncBillingStateFromShopify(shopDomain) {
+  const shopRes = await pool.query(
+    `SELECT access_token FROM shops WHERE shop_domain = $1 LIMIT 1`,
+    [shopDomain]
+  );
+
+  const accessToken = shopRes.rows[0]?.access_token;
+  if (!accessToken) return null;
+
+  const activeSub = await getActiveSubscription(shopDomain, accessToken);
+
+  if (activeSub?.status === 'ACTIVE') {
+    const mappedPlan = SUBSCRIPTION_PLAN_MAP[activeSub.name] || 'free';
+    await pool.query(
+      `UPDATE shops SET plan_name = $1, plan_status = 'active', updated_at = NOW() WHERE shop_domain = $2`,
+      [mappedPlan, shopDomain]
+    );
+    console.log(`[BILLING_SYNC] ${shopDomain} active subscription ${activeSub.name} -> ${mappedPlan}`);
+    return mappedPlan;
+  }
+
+  await pool.query(
+    `UPDATE shops SET plan_name = 'free', plan_status = 'active', updated_at = NOW() WHERE shop_domain = $1`,
+    [shopDomain]
+  );
+  console.log(`[BILLING_SYNC] ${shopDomain} no active subscription -> free`);
+  return 'free';
+}
 
 app.post("/webhooks/app/subscriptions/update", express.raw({ type: "application/json" }), async (req, res) => {
   try {
@@ -3998,6 +4049,7 @@ app.get("/plans", requireShopSession, async (req, res) => {
     if (!shop) return res.status(400).send("Missing or invalid shop.");
 
 
+    await syncBillingStateFromShopify(shop).catch(e => console.warn('[BILLING_SYNC] failed', shop, e.message));
     const dashboard = await getDashboardData(shop);
     if (!dashboard) return res.status(404).send("Shop not found.");
 
@@ -4096,10 +4148,10 @@ app.get("/plans", requireShopSession, async (req, res) => {
       if (isCurrent) {
         ctaHtml = `<div style="text-align:center;padding:12px;background:#f0fdf4;border-radius:10px;color:#16a34a;font-weight:700;font-size:14px;">Your current plan</div>`
           + (plan.id !== 'free'
-              ? `<p style="margin-top:10px;font-size:12px;color:#6b7280;text-align:center;line-height:1.5;">To cancel or manage billing, use Shopify billing from your store admin.</p>`
+              ? managedPricingTopFrameButton('Manage subscription →', shop, 'display:block;width:100%;text-align:center;margin-top:8px;padding:10px 12px;border:1px solid #d1d5db;border-radius:10px;color:#374151;font-size:14px;font-weight:600;cursor:pointer;background:white;')
               : '');
       } else if (!isLower) {
-        ctaHtml = `<form method="POST" action="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}" style="margin:0"><input type="hidden" name="plan" value="${escapeHtml(plan.id)}"><button type="submit" style="display:block;width:100%;text-align:center;padding:12px;background:${plan.headerBg};color:#fff;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer;border:none;">Upgrade to ${escapeHtml(plan.name)}</button></form>`;
+        ctaHtml = managedPricingTopFrameButton(`Upgrade to ${plan.name}`, shop, `display:block;width:100%;text-align:center;padding:12px;background:${plan.headerBg};color:#fff;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer;border:none;`);
       }
 
       return `<div style="flex:1;min-width:240px;max-width:320px;border-radius:16px;overflow:hidden;${borderStyle}background:#fff;">
@@ -4354,6 +4406,7 @@ app.get("/app", requireShopSession, async (req, res) => {
     }
 
 
+    await syncBillingStateFromShopify(shop).catch(e => console.warn('[BILLING_SYNC] failed', shop, e.message));
     const dashboard = await getDashboardData(shop);
     if (!dashboard) {
       return res.status(404).send("Shop not found. Reinstall the app from Shopify.");
@@ -4378,6 +4431,7 @@ app.get("/settings", requireShopSession, async (req, res) => {
     if (!shop) return res.status(400).send("Missing or invalid shop.");
 
 
+    await syncBillingStateFromShopify(shop).catch(e => console.warn('[BILLING_SYNC] failed', shop, e.message));
     const dashboard = await getDashboardData(shop);
     if (!dashboard) return res.status(404).send("Shop not found.");
 
@@ -4422,11 +4476,11 @@ app.get("/settings", requireShopSession, async (req, res) => {
             </div>
             <div class="actions" style="margin-top:16px;">
               ${dashboard.shop.plan_name === 'free' ? `
-              <a class="btn primary" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=growth">Growth — ${PLAN_PRICES.growth.display}/mo</a>
-              <a class="btn" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro">Pro — ${PLAN_PRICES.pro.display}/mo</a>
+              ${managedPricingTopFrameLink(`Growth — ${PLAN_PRICES.growth.display}/mo`, shop, 'display:inline-block;background:#0b1f55;color:#fff;padding:10px 14px;border-radius:10px;text-decoration:none;font-weight:700;')}
+              ${managedPricingTopFrameLink(`Pro — ${PLAN_PRICES.pro.display}/mo`, shop, 'display:inline-block;border:1px solid #d1d5db;color:#111827;padding:10px 14px;border-radius:10px;text-decoration:none;font-weight:700;')}
               <a class="btn" href="${getEmbeddedAppUrl(shop, host, '/plans')}">See all plans →</a>` : ''}
               ${dashboard.shop.plan_name === 'growth' ? `
-              <a class="btn primary" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro">Upgrade to Pro — ${PLAN_PRICES.pro.display}/mo</a>
+              ${managedPricingTopFrameLink(`Upgrade to Pro — ${PLAN_PRICES.pro.display}/mo`, shop, 'display:inline-block;background:#0b1f55;color:#fff;padding:10px 14px;border-radius:10px;text-decoration:none;font-weight:700;')}
               <a class="btn" href="${getEmbeddedAppUrl(shop, host, '/plans')}">See all plans →</a>` : ''}
               ${dashboard.shop.plan_name === 'pro' ? `
               <span class="muted" style="font-size:13px;">You're on the Pro plan. To cancel or downgrade, manage your subscription in <a href="${getEmbeddedAppUrl(shop, host, '/billing/portal')}" style="color:#0b1f55;">Shopify billing</a>.</span>` : ''}
@@ -4697,6 +4751,7 @@ app.get('/support-embedded', requireShopSession, async (req, res) => {
     const host = String(req.query.host || '');
     if (!shop) return res.status(400).send('Missing or invalid shop.');
 
+    await syncBillingStateFromShopify(shop).catch(e => console.warn('[BILLING_SYNC] failed', shop, e.message));
     const dashboard = await getDashboardData(shop);
     if (!dashboard) return res.status(404).send('Shop not found.');
 
