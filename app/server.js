@@ -3957,7 +3957,7 @@ app.get("/billing/return", async (req, res) => {
   }
 });
 
-app.get("/billing/manage", requireShopSession, async (req, res) => {
+app.all("/billing/manage", requireShopSession, async (req, res) => {
   try {
     const shop = sanitizeShop(req.query.shop);
     const host = String(req.query.host || "");
@@ -4093,7 +4093,7 @@ app.get("/plans", requireShopSession, async (req, res) => {
       if (isCurrent) {
         ctaHtml = `<div style="text-align:center;padding:12px;background:#f0fdf4;border-radius:10px;color:#16a34a;font-weight:700;font-size:14px;">Your current plan</div>`
           + (plan.id !== 'free'
-              ? `<a href="${getEmbeddedAppUrl(shop, host, '/billing/manage')}" style="display:block;width:100%;text-align:center;margin-top:8px;padding:10px 12px;border:1px solid #d1d5db;border-radius:10px;color:#374151;font-size:14px;font-weight:600;text-decoration:none;background:white;">Manage subscription →</a>`
+              ? `<form method="POST" action="${getEmbeddedAppUrl(shop, host, '/billing/manage')}" style="margin:0"><button type="submit" style="display:block;width:100%;text-align:center;margin-top:8px;padding:10px 12px;border:1px solid #d1d5db;border-radius:10px;color:#374151;font-size:14px;font-weight:600;cursor:pointer;background:white;">Manage subscription →</button></form>`
               : '');
       } else if (!isLower) {
         ctaHtml = `<form method="POST" action="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}" style="margin:0"><input type="hidden" name="plan" value="${escapeHtml(plan.id)}"><button type="submit" style="display:block;width:100%;text-align:center;padding:12px;background:${plan.headerBg};color:#fff;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer;border:none;">Upgrade to ${escapeHtml(plan.name)}</button></form>`;
