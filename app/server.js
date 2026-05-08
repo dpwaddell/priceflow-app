@@ -4093,7 +4093,7 @@ app.get("/plans", requireShopSession, async (req, res) => {
       if (isCurrent) {
         ctaHtml = `<div style="text-align:center;padding:12px;background:#f0fdf4;border-radius:10px;color:#16a34a;font-weight:700;font-size:14px;">Your current plan</div>`
           + (plan.id !== 'free'
-              ? `<form method="POST" action="${getEmbeddedAppUrl(shop, host, '/billing/manage')}" style="margin:0"><button type="submit" style="display:block;width:100%;text-align:center;margin-top:8px;padding:10px 12px;border:1px solid #d1d5db;border-radius:10px;color:#374151;font-size:14px;font-weight:600;cursor:pointer;background:white;">Manage subscription →</button></form>`
+              ? `<p style="margin-top:10px;font-size:12px;color:#6b7280;text-align:center;line-height:1.5;">To cancel or manage billing, use Shopify billing from your store admin.</p>`
               : '');
       } else if (!isLower) {
         ctaHtml = `<form method="POST" action="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}" style="margin:0"><input type="hidden" name="plan" value="${escapeHtml(plan.id)}"><button type="submit" style="display:block;width:100%;text-align:center;padding:12px;background:${plan.headerBg};color:#fff;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer;border:none;">Upgrade to ${escapeHtml(plan.name)}</button></form>`;
