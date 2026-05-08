@@ -31,12 +31,15 @@ api_version = "2026-04"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_customers,read_products,write_app_proxy,write_customers"
+scopes = "read_customers,read_products,write_app_proxy"
 optional_scopes = [ ]
 use_legacy_install_flow = false
 
 [auth]
-redirect_urls = [ "https://priceguard.sample-guard.com/auth/callback" ]
+redirect_urls = [
+  "https://priceguard.sample-guard.com/auth/callback",
+  "https://priceguard.sample-guard.com/billing/return"
+]
 
 [app_proxy]
 url = "https://priceguard.sample-guard.com/proxy"

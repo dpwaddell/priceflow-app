@@ -131,7 +131,9 @@ async function getActiveSubscription(shopDomain, accessToken) {
   });
 
   if (!response.ok) {
-    throw new Error(`Shopify billing query returned ${response.status}`);
+    const err = new Error(`Shopify billing API returned ${response.status}`);
+    err.statusCode = response.status;
+    throw err;
   }
 
   const json = await response.json();
@@ -1003,7 +1005,6 @@ function renderLayout({ shop, host, apiKey, title, content, hasSession = false }
     <script>
   const host = new URLSearchParams(window.location.search).get("host");
   if (host && window.shopify) {
-    window.shopify.createApp({ apiKey: "${apiKeySafe}", host, forceRedirect: true });
     if (typeof window.shopify.idToken === 'function') {
       window.shopify.idToken().then(function(token) {
         if (token) {
@@ -1125,7 +1126,7 @@ function renderBrandHero(opts) {
     + (planStatus === 'frozen'
         ? '<div style="margin-top:12px;padding:14px 18px;background:#fef3c7;border:1px solid #fcd34d;border-radius:14px;color:#92400e;font-size:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">'
           + '<span>⚠️ <strong>Your subscription is frozen.</strong> Please update your payment method in Shopify billing to restore access.</span>'
-          + '<a href="#" onclick="event.preventDefault(); window.top.location.href=\'https://admin.shopify.com/store/' + shop.replace('.myshopify.com', '') + '/charges/priceguard/pricing_plans\';" style="font-weight:700;color:#92400e;white-space:nowrap;">Shopify billing →</a>'
+          + '<a href="' + getEmbeddedAppUrl(shop, host, '/billing/portal') + '" style="font-weight:700;color:#92400e;white-space:nowrap;">Manage billing →</a>'
           + '</div>'
         : '');
 }
@@ -3781,6 +3782,8 @@ app.get("/auth/callback", async (req, res) => {
     const refreshToken = tokenResponse.refresh_token;
     const expiresIn = tokenResponse.expires_in;
 
+    console.log(`[AUTH CALLBACK] shop=${shop} new_token=${accessToken ? accessToken.substring(0, 8) + '...' : 'NULL'} expires_in=${expiresIn ?? 'none'}`);
+
     if (!accessToken) {
       return res.status(500).send("No access token returned by Shopify.");
     }
@@ -3791,6 +3794,27 @@ app.get("/auth/callback", async (req, res) => {
       refreshToken,
       expiresIn
     });
+
+    const verifyRes = await pool.query(`SELECT access_token FROM shops WHERE shop_domain = $1 LIMIT 1`, [shop]);
+    const storedToken = verifyRes.rows[0]?.access_token;
+    console.log(`[AUTH CALLBACK] DB token after upsert=${storedToken ? storedToken.substring(0, 8) + '...' : 'NULL'} match=${storedToken === accessToken}`);
+
+    // On install/reinstall, sync the active subscription from Shopify so the DB
+    // reflects the current plan state without waiting for a webhook.
+    try {
+      const activeSub = await getActiveSubscription(shop, accessToken).catch(() => null);
+      if (activeSub) {
+        const subName = activeSub.name || '';
+        const syncedPlan = subName.includes('Growth') ? 'growth' : subName.includes('Pro') ? 'pro' : 'free';
+        await pool.query(
+          `UPDATE shops SET plan_name = $1, plan_status = 'active', updated_at = NOW() WHERE id = $2`,
+          [syncedPlan, shopRow.id]
+        );
+        console.log(`[AUTH] Synced plan for ${shop}: ${syncedPlan}`);
+      }
+    } catch (syncErr) {
+      console.error(`[AUTH] Plan sync failed for ${shop}:`, syncErr.message);
+    }
 
     const sessionKey = await createAppSession(shopRow.id, shop);
     const sessionCookieVal = encodeURIComponent(makeSignedCookie(sessionKey));
@@ -3881,6 +3905,86 @@ app.get("/billing/callback", async (req, res) => {
     return res.redirect(getEmbeddedAppUrl(shop, host, "/"));
   } catch (e) {
     return res.status(500).send(`Billing callback failed: ${escapeHtml(e.message)}`);
+  }
+});
+
+app.get("/billing/return", async (req, res) => {
+  console.log(`[BILLING RETURN] ALL query params: ${JSON.stringify(req.query)}`);
+  try {
+    const shop = sanitizeShop(req.query.shop);
+    const host = String(req.query.host || "");
+    const chargeId = String(req.query.charge_id || "").trim();
+    console.log(`[BILLING RETURN] shop=${shop} host=${host} charge_id=${chargeId || '(missing)'}`);
+    if (!shop) return res.status(400).send("Invalid shop parameter.");
+    console.log(`[BILLING RETURN] charge_id=${chargeId || '(missing)'} — proceeding to check active sub anyway`);
+
+    const shopRes = await pool.query(
+      `SELECT id, access_token FROM shops WHERE shop_domain = $1 LIMIT 1`,
+      [shop]
+    );
+    if (shopRes.rowCount === 0 || !shopRes.rows[0].access_token) {
+      console.warn(`[BILLING CONFIRM] charge_id=${chargeId} shop=${shop} — shop not found or no token`);
+      return res.redirect(`/install?shop=${encodeURIComponent(shop)}`);
+    }
+    const shopRow = shopRes.rows[0];
+
+    const activeSub = await getActiveSubscription(shop, shopRow.access_token).catch(() => null);
+    if (activeSub) {
+      const subName = activeSub.name || '';
+      const newPlan = subName.includes('Growth') ? 'growth' : 'pro';
+      await pool.query(
+        `UPDATE shops SET plan_name = $1, plan_status = 'active', updated_at = NOW() WHERE id = $2`,
+        [newPlan, shopRow.id]
+      );
+      console.log(`[BILLING CONFIRM] charge_id=${chargeId} shop=${shop} plan synced to ${newPlan}`);
+    } else {
+      console.warn(`[BILLING CONFIRM] attempt 1 failed for ${shop} — waiting 2s and retrying`);
+      await new Promise(r => setTimeout(r, 2000));
+      const activeSub2 = await getActiveSubscription(shop, shopRow.access_token).catch(() => null);
+      if (activeSub2) {
+        const subName2 = activeSub2.name || '';
+        const newPlan2 = subName2.includes('Growth') ? 'growth' : 'pro';
+        await pool.query(`UPDATE shops SET plan_name = $1, plan_status = 'active', updated_at = NOW() WHERE id = $2`, [newPlan2, shopRow.id]);
+        console.log(`[BILLING CONFIRM] retry succeeded for ${shop} plan synced to ${newPlan2}`);
+      } else {
+        console.error(`[BILLING CONFIRM] retry also failed for ${shop} — plan not updated`);
+      }
+    }
+
+    return res.redirect(getEmbeddedAppUrl(shop, host, "/"));
+  } catch (e) {
+    return res.status(500).send(`Billing return failed: ${escapeHtml(e.message)}`);
+  }
+});
+
+app.get("/billing/manage", requireShopSession, async (req, res) => {
+  try {
+    const shop = sanitizeShop(req.query.shop);
+    const host = String(req.query.host || "");
+    if (!shop) return res.status(400).send("Missing or invalid shop.");
+
+    const shopRes = await pool.query(
+      `SELECT plan_name, plan_status FROM shops WHERE shop_domain = $1 LIMIT 1`,
+      [shop]
+    );
+    if (shopRes.rowCount === 0) {
+      return res.redirect(getEmbeddedAppUrl(shop, host, '/plans'));
+    }
+    const { plan_name, plan_status } = shopRes.rows[0];
+
+    const needsReapproval =
+      plan_name !== 'free' &&
+      ['frozen', 'inactive', 'cancelled'].includes(plan_status);
+
+    console.log(`[BILLING MANAGE] shop=${shop} plan_name=${plan_name} plan_status=${plan_status} needsReapproval=${needsReapproval}`);
+
+    if (needsReapproval) {
+      return res.redirect(getEmbeddedAppUrl(shop, host, '/billing/portal'));
+    }
+    return res.redirect(getEmbeddedAppUrl(shop, host, '/plans'));
+  } catch (e) {
+    console.error(`[BILLING MANAGE] Error for ${req.query.shop}:`, e.message);
+    return res.status(500).send(`Billing manage failed: ${escapeHtml(e.message)}`);
   }
 });
 
@@ -3989,10 +4093,10 @@ app.get("/plans", requireShopSession, async (req, res) => {
       if (isCurrent) {
         ctaHtml = `<div style="text-align:center;padding:12px;background:#f0fdf4;border-radius:10px;color:#16a34a;font-weight:700;font-size:14px;">Your current plan</div>`
           + (plan.id !== 'free'
-              ? `<a href="#" onclick="event.preventDefault(); window.top.location.href='https://admin.shopify.com/store/${shop.replace('.myshopify.com', '')}/charges/priceguard/pricing_plans';" style="display:block;text-align:center;margin-top:8px;padding:10px 12px;border:1px solid #d1d5db;border-radius:10px;color:#374151;font-size:14px;font-weight:600;text-decoration:none;">Manage subscription →</a>`
+              ? `<a href="${getEmbeddedAppUrl(shop, host, '/billing/manage')}" style="display:block;width:100%;text-align:center;margin-top:8px;padding:10px 12px;border:1px solid #d1d5db;border-radius:10px;color:#374151;font-size:14px;font-weight:600;text-decoration:none;background:white;">Manage subscription →</a>`
               : '');
       } else if (!isLower) {
-        ctaHtml = `<a href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=${plan.id}" style="display:block;text-align:center;padding:12px;background:${plan.headerBg};color:#fff;border-radius:10px;font-weight:700;font-size:14px;text-decoration:none;">Upgrade to ${escapeHtml(plan.name)}</a>`;
+        ctaHtml = `<form method="POST" action="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}" style="margin:0"><input type="hidden" name="plan" value="${escapeHtml(plan.id)}"><button type="submit" style="display:block;width:100%;text-align:center;padding:12px;background:${plan.headerBg};color:#fff;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer;border:none;">Upgrade to ${escapeHtml(plan.name)}</button></form>`;
       }
 
       return `<div style="flex:1;min-width:240px;max-width:320px;border-radius:16px;overflow:hidden;${borderStyle}background:#fff;">
@@ -4029,7 +4133,7 @@ app.get("/plans", requireShopSession, async (req, res) => {
         ${plans.map(renderPlanCard).join("")}
       </div>
       <div style="margin-top:24px;text-align:center;font-size:13px;color:#9ca3af;">
-        All plans include a 14-day free trial. <a href="#" onclick="event.preventDefault(); window.top.location.href='https://admin.shopify.com/store/${shop.replace('.myshopify.com', '')}/charges/priceguard/pricing_plans';" style="color:#6b7280;">Manage your subscription in Shopify billing →</a>
+        All plans include a 14-day free trial.
       </div>
     `;
 
@@ -4039,27 +4143,200 @@ app.get("/plans", requireShopSession, async (req, res) => {
   }
 });
 
-app.get("/billing/upgrade", requireShopSession, async (req, res) => {
+function billingPortalReauth(res, shop) {
+  const installUrl = `${process.env.APP_URL}/install?shop=${encodeURIComponent(shop)}`;
+  return res.send(`<!doctype html><html><head></head><body>
+  <p>Re-authenticating...</p>
+  <script>
+    if (window.top !== window.self) {
+      window.top.location.href = ${JSON.stringify(installUrl)};
+    } else {
+      window.location.href = ${JSON.stringify(installUrl)};
+    }
+  </script>
+  </body></html>`);
+}
+
+app.all("/billing/portal", requireShopSession, async (req, res) => {
   try {
     const shop = sanitizeShop(req.query.shop);
+    const host = String(req.query.host || "");
     if (!shop) return res.status(400).send("Missing or invalid shop.");
 
-    // PriceGuard uses Shopify Managed Pricing. Do not create Billing API subscriptions here.
-    // Send merchants to Shopify's managed pricing page so accept, decline, plan changes,
-    // cancellation and reinstall/resubscribe are handled by Shopify.
-    const managedPricingUrl = `https://admin.shopify.com/store/${shop.replace('.myshopify.com', '')}/charges/priceguard/pricing_plans`;
-    const urlSafe = escapeHtml(managedPricingUrl);
+    const shopRes = await pool.query(
+      `SELECT access_token FROM shops WHERE shop_domain = $1 LIMIT 1`,
+      [shop]
+    );
+    if (shopRes.rowCount === 0 || !shopRes.rows[0].access_token) {
+      console.log(`[BILLING PORTAL] No token in DB for ${shop} — triggering reauth`);
+      return billingPortalReauth(res, shop);
+    }
+    const { access_token } = shopRes.rows[0];
+    console.log(`[BILLING PORTAL] shop=${shop} token=${access_token.substring(0, 8)}...`);
 
-    return res.send(`<!doctype html>
-<html>
-<head>
-  <meta http-equiv="refresh" content="0;url=${urlSafe}">
-</head>
-<body>
-<script>window.top.location.href = "${urlSafe}";</script>
-</body>
-</html>`);
+    let sub;
+    try {
+      sub = await getActiveSubscription(shop, access_token);
+    } catch (e) {
+      const status = e.statusCode || 0;
+      console.error(`[BILLING PORTAL] getActiveSubscription failed for ${shop}: HTTP ${status} — ${e.message}`);
+      if (status === 401) {
+        return billingPortalReauth(res, shop);
+      }
+      throw e;
+    }
+    if (!sub) {
+      console.log(`[BILLING PORTAL] No active subscription for ${shop} — sub is null/undefined`);
+      return res.redirect(getEmbeddedAppUrl(shop, host, '/plans'));
+    }
+    console.log(`[BILLING PORTAL] Found subscription: ${JSON.stringify({name: sub.name, lineItems: sub.lineItems?.length})}`);
+
+    const lineItem = sub.lineItems?.[0];
+    const pricing = lineItem?.plan?.pricingDetails;
+    if (!pricing?.price) {
+      console.log(`[BILLING PORTAL] No pricing found. lineItem=${JSON.stringify(lineItem)} pricing=${JSON.stringify(pricing)}`);
+      return res.redirect(getEmbeddedAppUrl(shop, host, '/plans'));
+    }
+
+    const returnUrl = `${process.env.APP_URL}/billing/return?shop=${encodeURIComponent(shop)}&host=${encodeURIComponent(host)}`;
+    const testCharge = process.env.SHOPIFY_TEST_CHARGES === 'true';
+    const mutation = `#graphql
+      mutation BillingPortalCreate($name: String!, $returnUrl: URL!, $lineItems: [AppSubscriptionLineItemInput!]!, $test: Boolean) {
+        appSubscriptionCreate(name: $name, returnUrl: $returnUrl, lineItems: $lineItems, test: $test) {
+          userErrors { field message }
+          confirmationUrl
+        }
+      }
+    `;
+    const variables = {
+      name: sub.name,
+      returnUrl,
+      test: testCharge,
+      lineItems: [{
+        plan: {
+          appRecurringPricingDetails: {
+            price: { amount: pricing.price.amount, currencyCode: pricing.price.currencyCode },
+            interval: pricing.interval
+          }
+        }
+      }]
+    };
+
+    const gqlRes = await fetch(`https://${shop}/admin/api/2026-04/graphql.json`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': access_token },
+      body: JSON.stringify({ query: mutation, variables })
+    });
+    console.log(`[BILLING PORTAL] appSubscriptionCreate HTTP ${gqlRes.status} for ${shop}`);
+    if (gqlRes.status === 401) {
+      console.error(`[BILLING PORTAL] 401 on appSubscriptionCreate for ${shop} — triggering reauth`);
+      return billingPortalReauth(res, shop);
+    }
+    const gqlJson = await gqlRes.json();
+    const confirmationUrl = gqlJson.data?.appSubscriptionCreate?.confirmationUrl;
+
+    if (!confirmationUrl) {
+      console.error(`[BILLING PORTAL] No confirmationUrl for ${shop}. userErrors:`, JSON.stringify(gqlJson.data?.appSubscriptionCreate?.userErrors));
+      return res.redirect(getEmbeddedAppUrl(shop, host, '/plans'));
+    }
+    const safeUrl = JSON.stringify(confirmationUrl);
+    return res.send(`<!doctype html><html><head></head><body>
+  <script>
+    if (window.top !== window.self) {
+      window.top.location.href = ${safeUrl};
+    } else {
+      window.location.href = ${safeUrl};
+    }
+  </script>
+  </body></html>`);
   } catch (e) {
+    console.error(`[BILLING PORTAL] Unhandled error for shop ${req.query.shop}:`, e.message);
+    return res.status(500).send(`Billing portal failed: ${escapeHtml(e.message)}`);
+  }
+});
+
+app.all("/billing/upgrade", requireShopSession, async (req, res) => {
+  try {
+    const shop = sanitizeShop(req.query.shop);
+    const host = String(req.query.host || "");
+    const plan = String(req.body?.plan || req.query.plan || "");
+    if (!shop) return res.status(400).send("Missing or invalid shop.");
+
+    if (!plan || plan === 'free') {
+      return res.redirect(getEmbeddedAppUrl(shop, host, '/'));
+    }
+
+    const planDetails = PLAN_PRICES[plan];
+    if (!planDetails) {
+      console.error(`[BILLING UPGRADE] Unknown plan "${plan}" for ${shop}`);
+      return res.redirect(getEmbeddedAppUrl(shop, host, '/plans'));
+    }
+
+    const shopRes = await pool.query(
+      `SELECT access_token FROM shops WHERE shop_domain = $1 LIMIT 1`,
+      [shop]
+    );
+    if (shopRes.rowCount === 0 || !shopRes.rows[0].access_token) {
+      console.log(`[BILLING UPGRADE] No token in DB for ${shop} — triggering reauth`);
+      return billingPortalReauth(res, shop);
+    }
+    const { access_token } = shopRes.rows[0];
+    console.log(`[BILLING UPGRADE] shop=${shop} plan=${plan} token=${access_token.substring(0, 8)}...`);
+
+    const returnUrl = `${process.env.APP_URL}/billing/return?shop=${encodeURIComponent(shop)}&host=${encodeURIComponent(host)}`;
+    const testCharge = process.env.SHOPIFY_TEST_CHARGES === 'true';
+    const mutation = `#graphql
+      mutation BillingUpgradeCreate($name: String!, $returnUrl: URL!, $lineItems: [AppSubscriptionLineItemInput!]!, $test: Boolean) {
+        appSubscriptionCreate(name: $name, returnUrl: $returnUrl, lineItems: $lineItems, test: $test) {
+          userErrors { field message }
+          confirmationUrl
+        }
+      }
+    `;
+    const planName = plan.charAt(0).toUpperCase() + plan.slice(1);
+    const variables = {
+      name: `PriceGuard ${planName}`,
+      returnUrl,
+      test: testCharge,
+      lineItems: [{
+        plan: {
+          appRecurringPricingDetails: {
+            price: { amount: planDetails.monthly.toFixed(2), currencyCode: 'USD' },
+            interval: 'EVERY_30_DAYS'
+          }
+        }
+      }]
+    };
+
+    const gqlRes = await fetch(`https://${shop}/admin/api/2026-04/graphql.json`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': access_token },
+      body: JSON.stringify({ query: mutation, variables })
+    });
+    console.log(`[BILLING UPGRADE] appSubscriptionCreate HTTP ${gqlRes.status} for ${shop} plan=${plan}`);
+    if (gqlRes.status === 401) {
+      console.error(`[BILLING UPGRADE] 401 on appSubscriptionCreate for ${shop} — triggering reauth`);
+      return billingPortalReauth(res, shop);
+    }
+    const gqlJson = await gqlRes.json();
+    const confirmationUrl = gqlJson.data?.appSubscriptionCreate?.confirmationUrl;
+    if (!confirmationUrl) {
+      console.error(`[BILLING UPGRADE] No confirmationUrl for ${shop} plan=${plan}. userErrors:`, JSON.stringify(gqlJson.data?.appSubscriptionCreate?.userErrors));
+      return res.redirect(getEmbeddedAppUrl(shop, host, '/plans'));
+    }
+    console.log(`[BILLING UPGRADE] confirmationUrl=${confirmationUrl} returnUrl=${returnUrl}`);
+    const safeUrl = JSON.stringify(confirmationUrl);
+    return res.send(`<!doctype html><html><head></head><body>
+  <script>
+    if (window.top !== window.self) {
+      window.top.location.href = ${safeUrl};
+    } else {
+      window.location.href = ${safeUrl};
+    }
+  </script>
+  </body></html>`);
+  } catch (e) {
+    console.error(`[BILLING UPGRADE] Unhandled error for shop ${req.query.shop}:`, e.message);
     return res.status(500).send(`Billing upgrade failed: ${escapeHtml(e.message)}`);
   }
 });
@@ -4149,7 +4426,7 @@ app.get("/settings", requireShopSession, async (req, res) => {
               <a class="btn primary" href="${getEmbeddedAppUrl(shop, host, '/billing/upgrade')}&plan=pro">Upgrade to Pro — ${PLAN_PRICES.pro.display}/mo</a>
               <a class="btn" href="${getEmbeddedAppUrl(shop, host, '/plans')}">See all plans →</a>` : ''}
               ${dashboard.shop.plan_name === 'pro' ? `
-              <span class="muted" style="font-size:13px;">You're on the Pro plan. To cancel or downgrade, manage your subscription in <a href="#" onclick="event.preventDefault(); window.top.location.href='https://admin.shopify.com/store/${shop.replace('.myshopify.com', '')}/charges/priceguard/pricing_plans';" style="color:#0b1f55;">Shopify billing</a>.</span>` : ''}
+              <span class="muted" style="font-size:13px;">You're on the Pro plan. To cancel or downgrade, manage your subscription in <a href="${getEmbeddedAppUrl(shop, host, '/billing/portal')}" style="color:#0b1f55;">Shopify billing</a>.</span>` : ''}
             </div>
           </div>
 
@@ -4462,7 +4739,7 @@ app.get('/support-embedded', requireShopSession, async (req, res) => {
             ${faqItem('How do I upgrade my plan?',
               'Click <strong>Plans &amp; Pricing</strong> in the nav above, or go to Settings. Growth (${PLAN_PRICES.growth.display}/mo) adds sitewide pricing, tag-based tiers, and SKU overrides. Pro (${PLAN_PRICES.pro.display}/mo) adds CSV import, scheduled pricing, and priority support.')}
             ${faqItem('How does billing work?',
-              'Billing is handled by Shopify. Charges appear on your Shopify invoice. A 14-day free trial applies to new Growth and Pro subscriptions. You may cancel at any time from your Shopify billing settings.')}
+              'Billing is handled by Shopify. Charges appear on your Shopify invoice. A 14-day free trial applies to new Growth and Pro subscriptions. You may cancel at any time from Shopify billing settings.')}
           </div>
         </div>
       </div>
