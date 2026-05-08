@@ -3004,7 +3004,10 @@ app.post("/webhooks/app/uninstalled", express.raw({ type: "application/json" }),
 
 const SUBSCRIPTION_PLAN_MAP = {
   'PriceGuard Growth': 'growth',
-  'PriceGuard Pro':    'pro',
+  'PriceGuard Pro': 'pro',
+  'Growth': 'growth',
+  'Pro': 'pro',
+  'Free': 'free',
 };
 
 app.post("/webhooks/app/subscriptions/update", express.raw({ type: "application/json" }), async (req, res) => {
