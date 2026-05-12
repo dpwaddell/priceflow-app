@@ -279,24 +279,106 @@ function getEmbeddedAppUrl(shop, host = "", path = "/") {
   return `${base}${cleanPath}?${params.toString()}`;
 }
 
+
+async function fetchMerchantContact(shopDomain, accessToken) {
+  if (!shopDomain || !accessToken) return {};
+
+  try {
+    const query = `#graphql
+      query {
+        shop {
+          email
+          contactEmail
+          shopOwnerName
+          name
+        }
+      }
+    `;
+
+    const response = await fetch(
+      `https://${shopDomain}/admin/api/2026-04/graphql.json`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Shopify-Access-Token": accessToken
+        },
+        body: JSON.stringify({ query })
+      }
+    );
+
+    const json = await response.json();
+
+    const shop = json?.data?.shop || {};
+
+    return {
+      merchantEmail: shop.email || null,
+      merchantContactEmail: shop.contactEmail || null,
+      shopOwnerName: shop.shopOwnerName || null,
+      shopName: shop.name || null
+    };
+  } catch (e) {
+    console.warn("[merchant_contact_fetch_failed]", e.message);
+    return {};
+  }
+}
+
 async function ensureShopAndSettings({ shopDomain, accessToken = null, refreshToken = null, expiresIn = null }) {
   const tokenExpiresAt = expiresIn ? new Date(Date.now() + expiresIn * 1000) : null;
+  const merchant = accessToken
+    ? await fetchMerchantContact(shopDomain, accessToken)
+    : {};
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
     const shopRes = await client.query(
-      `INSERT INTO shops (shop_domain, access_token, refresh_token, token_expires_at, installed_at, plan_name, plan_status, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, NOW(), 'free', 'active', NOW(), NOW())
+      `INSERT INTO shops (
+         shop_domain,
+         access_token,
+         refresh_token,
+         token_expires_at,
+         installed_at,
+         plan_name,
+         plan_status,
+         merchant_email,
+         merchant_contact_email,
+         shop_owner_name,
+         merchant_details_captured_at,
+         created_at,
+         updated_at
+       )
+       VALUES (
+         $1, $2, $3, $4,
+         NOW(),
+         'free',
+         'active',
+         $5, $6, $7,
+         CASE WHEN $5 IS NOT NULL OR $6 IS NOT NULL OR $7 IS NOT NULL THEN NOW() ELSE NULL END,
+         NOW(),
+         NOW()
+       )
        ON CONFLICT (shop_domain)
        DO UPDATE SET
          access_token = COALESCE(EXCLUDED.access_token, shops.access_token),
          refresh_token = COALESCE(EXCLUDED.refresh_token, shops.refresh_token),
          token_expires_at = COALESCE(EXCLUDED.token_expires_at, shops.token_expires_at),
+         merchant_email = COALESCE(EXCLUDED.merchant_email, shops.merchant_email),
+         merchant_contact_email = COALESCE(EXCLUDED.merchant_contact_email, shops.merchant_contact_email),
+         shop_owner_name = COALESCE(EXCLUDED.shop_owner_name, shops.shop_owner_name),
+         merchant_details_captured_at = COALESCE(EXCLUDED.merchant_details_captured_at, shops.merchant_details_captured_at),
          installed_at = COALESCE(shops.installed_at, NOW()),
          updated_at = NOW()
        RETURNING id, shop_domain, plan_name, plan_status`,
-      [shopDomain, accessToken, refreshToken, tokenExpiresAt]
+      [
+        shopDomain,
+        accessToken,
+        refreshToken,
+        tokenExpiresAt,
+        merchant.merchantEmail || null,
+        merchant.merchantContactEmail || null,
+        merchant.shopOwnerName || null
+      ]
     );
 
     const shop = shopRes.rows[0];
